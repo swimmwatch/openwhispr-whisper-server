@@ -64,8 +64,6 @@ jobs:
           with open(os.environ['GITHUB_PATH'], 'a') as output:
               output.write(str(destination) + '\n')
           PY
-      - name: C01 deliberate failure fixture
-        run: exit 1
       - name: Verify the actual Go module
         run: |
           go mod download
