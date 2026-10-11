@@ -1,8 +1,8 @@
 # Resident V1 implementation plan
 
-Status: planning complete; I01/I02/I03 complete on 2026-10-11. C01 local implementation/checks passed; hosted CI and required-check settings remain pending. Runtime implementation not started.
+Status: planning complete; I01/I02/I03/C01 complete on 2026-10-11. Hosted main and pull_request checks passed; intentional failure blocked the test PR, and Bootstrap checks is required on main. Runtime implementation not started.
 Depth: Deep. Profiles: core, backend, operations, security.
-Current authorization: C01 only, through the explicit incremental invocation after I03. Scoped workflow/settings writes and CI execution are covered; commit/push require the packet's separate explicit authorization. Finish C01 before stopping; do not execute F01 or later packets. No artifact publication or deployment is authorized.
+Current authorization: C01 only. The user explicitly authorized initial public source commit/push and test PR with `ok`; scoped workflow/settings writes and CI execution are covered. C01 is complete; stop before F01 or later packets. No artifact publication, deployment or PR merge is authorized.
 
 ## Reviewed inputs and readiness
 
