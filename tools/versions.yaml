@@ -66,7 +66,7 @@
   "coverage": {
     "go_packages": "None yet; F01 creates real application behavior",
     "go_sum": "Not generated for a module without dependencies; retain it when dependencies are introduced",
-    "security_scans": "C01 current-source secrets passed locally; hosted CI pending. Full Go/Docker/Helm/image gate belongs to C02",
+    "security_scans": "C01 current-source secrets passed locally and on hosted main/pull_request CI. Full Go/Docker/Helm/image gate belongs to C02",
     "image_builds": "Not run; synthetic Docker context checks do not build application images",
     "temporary_tools": "One-off scripts and their dependencies live in ignored .local; permanent CI checks are owned by C01/C02"
   },

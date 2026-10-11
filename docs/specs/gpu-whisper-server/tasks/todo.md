@@ -1,11 +1,11 @@
 # Resident V1 completion checklist
 
-Status: I01, I02 and I03 complete. C01 local implementation/checks passed; mandatory hosted CI and required-check settings are pending hosted execution; commit/push and test PR are authorized, so C01 remains unchecked. External plugin copying and other-client checks were cancelled by the user's explicit scope change. Runtime implementation not started. This is the sole packet completion checklist. Planned or unavailable checks for the remaining packets are not passes.
+Status: I01, I02, I03 and C01 complete. Hosted main and pull_request checks passed; deliberate failure blocked the test PR and the existing main ruleset now requires Bootstrap checks. Runtime implementation not started. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
 
 - [x] [I01 — local project initialization](init_01_local_project.md)
 - [x] [I02 — public GitHub and open-source foundation](init_02_github_open_source.md)
 - [x] [I03 — Codex project tooling](init_03_agent_tooling.md)
-- [ ] [C01 — early contributor CI](ci_01_bootstrap_checks.md)
+- [x] [C01 — early contributor CI](ci_01_bootstrap_checks.md)
 - [ ] [F01 — Go settings, logging, middleware and architecture](foundation_01_go_service.md)
 - [ ] [P01 — configuration and models](01_configuration_models.md)
 - [ ] [P02 — backend supervisor](02_backend_supervisor.md)
