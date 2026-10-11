@@ -1,0 +1,56 @@
+schema_version: 1
+depth: deep
+confirmed: true
+rationale:
+  - "Retain one Resident V1 specification: Go + Echo API, unchanged OpenWhispr/whisper.cpp backend, two images, paired separate Pods and one Helm chart, with both mandatory GPU targets."
+  - Include the requested staged OSS initialization, Apache-2.0 own code/chart, Codex/Claude tooling, GHCR plus Docker Hub images, GHCR OCI plus Pages chart delivery, artifact-only CD and pre-release qualification before stable; Home Lab deployment stays manual.
+  - The new user request adds Go project conventions/clean dependency direction, supported packages for configuration and validation, structured startup/request logging, request-ID middleware and rate limiting before expensive request work.
+  - Keep the same three planning contract paths and Deep core/backend/operations/security profiles; no new product UI/auth/database, automatic cluster provisioning, RAM-cache/on-demand implementation or native C++ fork in V1.
+  - Draft planning proposals may be prepared from the request; confirmation plus fresh independent review/Approved state is still required for execution readiness.
+  - "The user selected per-IP rate limits with replaceable storage: in-memory in V1, Redis or another store later; reuse the framework's existing store interface and keep external store implementation/configuration deferred."
+profiles:
+  - id: core
+    reason: One portable Resident service needs shared configuration, maintained Go foundation packages and consistent Docker/Helm contracts.
+    state: active
+  - id: backend
+    reason: Go/Echo API and native backend supervision require clear dependency boundaries, request correlation, validated inputs and bounded rate limiting.
+    state: active
+  - id: operations
+    reason: GPU lifecycle, Docker/Helm deployment, open-source initialization, agent tooling and multi-channel CI/pre-release/stable verification remain one release outcome.
+    state: active
+  - id: security
+    reason: Audio privacy, safe structured logging, trusted client identity for rate limits and source/image/chart security gates are required.
+    state: active
+  - id: ui
+    reason: No V1 visual UI; retained future directions remain deferred.
+    state: not_applicable
+  - id: events
+    reason: No broker or asynchronous event API.
+    state: not_applicable
+  - id: data
+    reason: No business database; model cache and transient work remain operations/security concerns.
+    state: not_applicable
+  - id: cross-surface
+    reason: No coordinated client/UI implementation is requested.
+    state: not_applicable
+planning_artifacts:
+  - core/contracts.yaml
+  - contracts/openapi.yaml
+  - quality/scenarios.yaml
+extensions:
+  workflow_mcp_receipts:
+    - id: 548f84afacffdce6b5fbab7ff3fdfcb34c403547e99338b4e029cca16b1ed1dc
+      result:
+        confirmed: true
+        depth: standard
+        next: Load only the confirmed active profile references.
+    - id: 6d737a2592b19728d57a9090075d836514d7f19c151f21b1b99ca07a9b437710
+      result:
+        confirmed: true
+        depth: deep
+        next: Load only the confirmed active profile references.
+    - id: bee2f8d20f6321b49a3de0222f432648c36f539f12982cd006979c67fd962211
+      result:
+        confirmed: true
+        depth: deep
+        next: Load only the confirmed active profile references.

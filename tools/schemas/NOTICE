@@ -1,0 +1,8 @@
+OpenAPI 3.0 JSON Schema
+
+The unmodified openapi-3.0.json schema is maintained by the OpenAPI Initiative.
+Source edition: 2024-10-18
+Source: https://spec.openapis.org/oas/3.0/schema/2024-10-18
+Upstream licensing: https://github.com/OAI/OpenAPI-Specification/blob/3.0.3/LICENSE
+License: Apache-2.0; see LICENSE in this directory.
+Its checksum and applicable OpenAPI version are recorded in tools/versions.yaml.

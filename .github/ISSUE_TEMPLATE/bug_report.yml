@@ -1,0 +1,26 @@
+name: Bug report or support question
+description: Report an ordinary bug or ask a configuration question.
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities use the private security link. Never include credentials, private audio or transcripts. Use synthetic reproductions and sanitized logs."
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Source revision, component versions, GPU and runtime details.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction or question
+      description: Minimal steps and sanitized configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true

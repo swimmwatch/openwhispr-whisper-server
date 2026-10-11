@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "scope": "Contributor bootstrap and C01 check identities; not the complete build or Security Check",
+  "platform": "linux/amd64",
+  "go": {
+    "version": "1.26.5",
+    "download": "https://go.dev/dl/go1.26.5.linux-amd64.tar.gz",
+    "sha256": "5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053",
+    "checksum_source": "https://go.dev/dl/?mode=json&include=all",
+    "automatic_toolchain_switching": false
+  },
+  "observed_tools": {
+    "git": "2.43.0",
+    "rtk": "0.46.0",
+    "docker": "29.9.0",
+    "buildx": "0.38.0"
+  },
+  "scanners": {
+    "gosec": {
+      "version": "v2.29.0",
+      "platform": "linux/amd64",
+      "source": "https://github.com/securego/gosec/releases/tag/v2.29.0",
+      "download": "https://github.com/securego/gosec/releases/download/v2.29.0/gosec_2.29.0_linux_amd64.tar.gz",
+      "sha256": "6431b119741c1f4a50fdfcf94e782e16b9e642afc8c7fa9b5d39d48bf3003095",
+      "checksum_source": "https://github.com/securego/gosec/releases/download/v2.29.0/gosec_2.29.0_checksums.txt",
+      "verification": "Downloaded bytes match publisher checksum and executable version",
+      "version_output": "Version: 2.29.0\nGit tag: v2.29.0\nBuild date: 2026-08-26T08:27:32Z"
+    },
+    "hadolint": {
+      "version": "v2.15.1",
+      "platform": "linux/amd64",
+      "source": "https://github.com/hadolint/hadolint/releases/tag/v2.15.1",
+      "download": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64",
+      "sha256": "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507",
+      "checksum_source": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/checksums.sha256",
+      "verification": "Downloaded bytes match publisher checksum and executable version",
+      "version_output": "Haskell Dockerfile Linter 2.15.1"
+    },
+    "trivy": {
+      "version": "v0.75.0",
+      "platform": "linux/amd64",
+      "source": "https://github.com/aquasecurity/trivy/releases/tag/v0.75.0",
+      "download": "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz",
+      "sha256": "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f",
+      "checksum_source": "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_checksums.txt",
+      "verification": "Downloaded bytes match publisher checksum and executable version",
+      "version_output": "Version: 0.75.0\nVulnerability DB:\n  Version: 2\n  UpdatedAt: 2026-07-15 00:56:58.403064168 +0000 UTC\n  NextUpdate: 2026-07-16 00:56:58.403063858 +0000 UTC\n  DownloadedAt: 2026-07-15 07:04:25.18179932 +0000 UTC\nCheck Bundle:\n  Digest: sha256:1583562f8b90ed2a071b99f0e5ffff6b57e4ceb6ca3e4796577b4e6a339eb74c\n  DownloadedAt: 2026-07-15 07:04:26.108999537 +0000 UTC"
+    },
+    "govulncheck": {
+      "version": "v1.8.0",
+      "module": "golang.org/x/vuln",
+      "source": "https://pkg.go.dev/golang.org/x/vuln@v1.8.0/cmd/govulncheck",
+      "sum": "h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U=",
+      "go_mod_sum": "h1:Fzm4XK3Hbl1ZvZ7JpNTEWb7CJWOZ7m2LX0GLu4Fsrwo=",
+      "revision": "709015412431dd2b5b28a53c06c70bc02d49074c",
+      "minimum_go": "1.26.0",
+      "verification": "Authenticated module download, isolated binary build with Go 1.26.5, and executable -version check",
+      "version_output": "Go: go1.26.5\nScanner: govulncheck@v1.8.0"
+    }
+  },
+  "commands": {
+    "module_download": "rtk proxy env GOTOOLCHAIN=local GOWORK=off go mod download",
+    "module_verify": "rtk proxy env GOTOOLCHAIN=local GOWORK=off go mod verify",
+    "scanner_installation": "Use these immutable distributions in C01/C02; never install scanner packages into the application module"
+  },
+  "coverage": {
+    "go_packages": "None yet; F01 creates real application behavior",
+    "go_sum": "Not generated for a module without dependencies; retain it when dependencies are introduced",
+    "security_scans": "C01 current-source secrets passed locally; hosted CI pending. Full Go/Docker/Helm/image gate belongs to C02",
+    "image_builds": "Not run; synthetic Docker context checks do not build application images",
+    "temporary_tools": "One-off scripts and their dependencies live in ignored .local; permanent CI checks are owned by C01/C02"
+  },
+  "bootstrap_verification": {
+    "minimum": "3.12",
+    "observed": "3.12.3",
+    "packages": {
+      "PyYAML": "6.0.3",
+      "jsonschema": "4.26.0",
+      "attrs": "26.1.0",
+      "jsonschema-specifications": "2025.9.1",
+      "referencing": "0.37.0",
+      "rpds-py": "2026.9.1",
+      "typing_extensions": "4.16.0"
+    },
+    "sources": {
+      "PyYAML": {
+        "version": "6.0.3",
+        "source": "https://pypi.org/project/PyYAML/6.0.3/"
+      },
+      "jsonschema": {
+        "version": "4.26.0",
+        "source": "https://pypi.org/project/jsonschema/4.26.0/"
+      },
+      "attrs": {
+        "version": "26.1.0",
+        "source": "https://pypi.org/project/attrs/26.1.0/"
+      },
+      "jsonschema-specifications": {
+        "version": "2025.9.1",
+        "source": "https://pypi.org/project/jsonschema-specifications/2025.9.1/"
+      },
+      "referencing": {
+        "version": "0.37.0",
+        "source": "https://pypi.org/project/referencing/0.37.0/"
+      },
+      "rpds-py": {
+        "version": "2026.9.1",
+        "source": "https://pypi.org/project/rpds-py/2026.9.1/"
+      },
+      "typing_extensions": {
+        "version": "4.16.0",
+        "source": "https://pypi.org/project/typing_extensions/4.16.0/"
+      }
+    },
+    "lock": ".local/bootstrap/requirements-checks.txt",
+    "scope": "Historical I01 verification environment; not a project dependency or CI prerequisite"
+  },
+  "ci": {
+    "python": "3.12.3",
+    "requirements_lock": "tools/requirements-ci.txt",
+    "actions": {
+      "actions/checkout": {
+        "version": "v7",
+        "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1"
+      },
+      "actions/setup-go": {
+        "version": "v7",
+        "sha": "b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+      },
+      "actions/setup-python": {
+        "version": "v7",
+        "sha": "5fda3b95a4ea91299a34e894583c3862153e4b97"
+      }
+    },
+    "actionlint": {
+      "version": "v1.7.12",
+      "download": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+      "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+      "checksum_source": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt"
+    },
+    "openapi_schema": {
+      "version": "2024-10-18",
+      "oas_version": "3.0.3",
+      "source": "https://spec.openapis.org/oas/3.0/schema/2024-10-18",
+      "sha256": "2385f5bbb8c37878daae73baeabe7f34b2f022a4a8c049329ee61f71796f039c"
+    },
+    "coverage": "C01 module/contracts/workflow/source-secret checks only; complete build/security/release pipeline belongs to C02"
+  }
+}

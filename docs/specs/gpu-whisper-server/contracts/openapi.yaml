@@ -1,0 +1,294 @@
+openapi: 3.0.3
+info:
+  title: Resident Whisper Transcription API
+  version: 1.0.0
+  description: Synchronous transcription subset and health for one fixed resident model. No authentication; anyone reaching this boundary can transcribe.
+  x-requirement-ids: [REQ-001, REQ-012, REQ-013, REQ-014, REQ-019, REQ-021, REQ-023, REQ-029, REQ-030]
+servers:
+  - url: http://localhost:8080
+    description: Standalone example; Kubernetes exposes the public API Service.
+security: []
+x-contract-authority: ../spec.md
+x-core-contract: ../core/contracts.yaml
+x-absent-routes:
+  - POST /v1/models/{model}/warmup
+  - POST /v1/models/{model}/unload
+  - GET /v1/models
+  - POST /v1/audio/translations
+  - POST /load
+  - POST /inference
+  - GET /metrics
+  - /admin
+  - /auth
+  - /docs
+x-unknown-route-response:
+  status: 404
+  code: route_not_found
+  headers: [X-Request-ID]
+x-error-adaptation:
+  requirement_ids: [REQ-013, REQ-019, REQ-029, REQ-031]
+  internal_contract: ../core/contracts.yaml go_foundation.error_contract
+  boundary: HTTP handlers/shared error adapter map protocol-neutral service failures and adapter-local failures to this registry; service errors have no HTTP presentation metadata.
+  wrapping: Use typed classification via standard errors.Is/As; never parse error-message text or serialize an internal cause.
+  fallback: Unknown failures use 500 internal_error with a fixed safe message and effective X-Request-ID.
+  health: Preserve the existing health-specific schemas and no-response-after-disconnect behavior.
+x-error-registry:
+  invalid_request: {status: 400, type: invalid_request_error, retry: Correct input.}
+  unsupported_audio: {status: 400, type: invalid_request_error, retry: Provide decodable audio.}
+  audio_duration_limit: {status: 400, type: invalid_request_error, retry: Use shorter audio.}
+  model_not_found: {status: 404, type: invalid_request_error, retry: Use the configured served ID.}
+  route_not_found: {status: 404, type: invalid_request_error, retry: Use a supported route.}
+  payload_too_large: {status: 413, type: invalid_request_error, retry: Reduce the audio payload.}
+  rate_limit_exceeded: {status: 429, type: rate_limit_error, retry: No upload/decoder/queue/backend work; wait at least Retry-After seconds.}
+  rate_limit_unavailable: {status: 503, type: service_unavailable_error, retry: Restore limiter storage; request was not admitted.}
+  queue_full: {status: 429, type: rate_limit_error, retry: Work did not execute; retry later.}
+  operation_timeout: {status: 408, type: timeout_error, retry: Waiting work never ran; active work may have begun. No exactly-once delivery guarantee.}
+  not_ready: {status: 503, type: service_unavailable_error, retry: Retry after readiness returns.}
+  backend_unavailable: {status: 503, type: service_unavailable_error, retry: Restore the backend; submitted inference is never silently retried.}
+  gpu_unavailable: {status: 503, type: service_unavailable_error, retry: Restore compatible GPU access.}
+  provisioning_failed: {status: 503, type: service_unavailable_error, retry: Correct artifacts/configuration and restart.}
+  shutting_down: {status: 503, type: service_unavailable_error, retry: Retry on a ready instance.}
+  internal_error: {status: 500, type: api_error, retry: Inspect safe diagnostics.}
+paths:
+  /v1/audio/transcriptions:
+    post:
+      operationId: createTranscription
+      summary: Transcribe with the configured resident model.
+      x-requirement-ids: [REQ-006, REQ-007, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013, REQ-019, REQ-021, REQ-029, REQ-030]
+      description: Per-IP rate limiting precedes upload reading/decoding/admission; 429 rate_limit_exceeded differs from queue_full. Validated work enters FIFO with one active operation. Deadline includes queue and execution. Duplicate/unknown fields reject before admission. No automatic inference retries; client loss may prevent response delivery.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TranscriptionForm'
+            encoding:
+              file:
+                contentType: application/octet-stream
+      parameters:
+        - $ref: '#/components/parameters/RequestID'
+      responses:
+        '200':
+          description: Only the current request's transcript.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+            text/plain:
+              schema:
+                type: string
+              example: Recognized speech.
+        '400':
+          $ref: '#/components/responses/Failure'
+        '404':
+          $ref: '#/components/responses/Failure'
+        '413':
+          $ref: '#/components/responses/Failure'
+        '429':
+          description: rate_limit_exceeded denies before upload reading and includes Retry-After; queue_full denies admission without execution and does not promise a refill delay.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '408':
+          $ref: '#/components/responses/Failure'
+        '503':
+          $ref: '#/components/responses/Failure'
+        '500':
+          $ref: '#/components/responses/Failure'
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Public API process is alive.
+      x-requirement-ids: [REQ-014, REQ-029, REQ-030]
+      description: Independent of inference/model/GPU readiness; never loads or transcribes.
+      parameters:
+        - $ref: '#/components/parameters/RequestID'
+      responses:
+        '200':
+          description: Process alive.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Live'
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Paired backend has loaded the configured CUDA-resident model.
+      x-requirement-ids: [REQ-006, REQ-008, REQ-014, REQ-016, REQ-017, REQ-029, REQ-030]
+      description: Independent bounded probe; never waits behind inference or initiates load/inference. Unready for failed startup, model/configuration mismatch, backend/GPU loss, recovery or shutdown. May be unreachable before listening. Native health alone is insufficient.
+      parameters:
+        - $ref: '#/components/parameters/RequestID'
+      responses:
+        '200':
+          description: Ready instance.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ready'
+        '503':
+          description: Safe bounded unready reason.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotReady'
+components:
+  parameters:
+    RequestID:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: A single safe ID is preserved; absent, duplicated or invalid values are replaced. Diagnostic only, not identity or deduplication.
+      schema:
+        type: string
+      x-accepted-pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+  headers:
+    RequestID:
+      description: Effective correlation ID on every API-produced response, including errors and probes.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+    RetryAfter:
+      description: Required positive delay in seconds only for rate_limit_exceeded; optional header definition does not require it on queue_full.
+      schema:
+        type: integer
+        minimum: 1
+  responses:
+    Failure:
+      description: Safe bounded error with a distinct cause code; no paths, secrets, filenames or user content.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    TranscriptionForm:
+      type: object
+      required: [file, model]
+      additionalProperties: false
+      x-multipart-validation:
+        duplicates: Reject all duplicates including optional fields/file.
+        unknown_fields: 400 invalid_request before admission.
+        framing: A file exactly at the payload cap fits permitted bounded framing and fields.
+        duration: Count actual decoded samples; no silent duration truncation.
+        staging: Bound aggregate retained uploads/decoders, body/part headers and transient disk use.
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Decodable WAV, MP3, MP4, MPEG, MPGA, M4A, OGG, FLAC or WebM, including OGG/WebM Opus. Validate content rather than filename/MIME. Default audio payload cap 25 MiB; framing is additional.
+          x-max-bytes-config: CFG-AUDIO-BYTES
+          x-decoded-duration-config: CFG-AUDIO-SECONDS
+        model:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+          example: base
+          description: Must equal the configured served ID; another ID returns 404 without loading/switching.
+        language:
+          type: string
+          default: auto
+          description: auto or a supported identifier/name from the pinned upstream language table. Unknown/model-incompatible choices return 400. English-only model auto resolves to English.
+        prompt:
+          type: string
+          default: ''
+          description: Valid UTF-8 bounded in bytes; never inherited by another request.
+          x-max-bytes-config: CFG-PROMPT-BYTES
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0
+          description: Finite value; reject NaN/infinities.
+        response_format:
+          type: string
+          enum: [json, text]
+          default: json
+        stream:
+          type: boolean
+          enum: [false]
+          default: false
+          description: Only literal false is accepted in a multipart field.
+    Transcription:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+    Error:
+      type: object
+      required: [message, type, param, code]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          maxLength: 256
+          description: Safe diagnostic; no paths, secrets, audio, prompt, transcript or client filename.
+        type:
+          type: string
+          enum: [invalid_request_error, rate_limit_error, timeout_error, service_unavailable_error, api_error]
+        param:
+          type: string
+          nullable: true
+          enum: [file, model, language, prompt, temperature, response_format, stream, null]
+        code:
+          type: string
+          enum: [invalid_request, unsupported_audio, audio_duration_limit, model_not_found, route_not_found, payload_too_large, rate_limit_exceeded, rate_limit_unavailable, queue_full, operation_timeout, not_ready, backend_unavailable, gpu_unavailable, provisioning_failed, shutting_down, internal_error]
+    Live:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [live]
+    Ready:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ready]
+    NotReady:
+      type: object
+      required: [status, reason]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [not_ready]
+        reason:
+          type: string
+          enum: [starting, not_ready, model_not_loaded, configuration_mismatch, backend_unavailable, gpu_unavailable, provisioning_failed, recovering, shutting_down]
+

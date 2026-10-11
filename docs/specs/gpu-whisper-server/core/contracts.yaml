@@ -1,0 +1,436 @@
+schema_version: 1
+kind: resident-service-contract
+authority: ../spec.md
+requirement_ids: [REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-007, REQ-008, REQ-015, REQ-016, REQ-017, REQ-019, REQ-021, REQ-022, REQ-023, REQ-024, REQ-025, REQ-026, REQ-027, REQ-028, REQ-029, REQ-030, REQ-031]
+runtime:
+  platform: linux/amd64
+  api:
+    language: Go
+    framework: github.com/labstack/echo/v5
+    framework_version: v5.4.0
+    toolchain_baseline: 1.26.5
+    minimum_go: 1.26.0
+  backend:
+    upstream: OpenWhispr/whisper.cpp
+    revision: 6ac14546046ffb17d144a08bcad65337e535cf5
+    server_blob: b87ef27375fd614d9e7c9698ecda94b03e548eb6
+    source_changes: false
+    supervisor: Go standard-library HTTP and subprocess control
+    cuda_baseline: '12.8'
+    native_architecture_detection: false
+    cuda_architectures: [50-virtual, 61-virtual, 70-virtual, 75-virtual, 80-virtual, 86-real, 89-real, 90-virtual, 120a-real]
+    compatibility: Preserve the pinned source's coverage for each toolchain variant; never copy the narrower upstream Dockerfile list.
+  decoder:
+    source_baseline: FFmpeg n9.0.2
+    source_identity: Resolve the immutable release commit and source checksum during packaging.
+    input: 'cache:pipe:0; protocol_whitelist=pipe,cache; stdin is capped at the audio payload bound.'
+    seeking: read_ahead_limit=-1 permits end-of-file seeking but is bounded by the already capped stdin.
+    output: Count mono 16000 Hz signed 16-bit PCM from pipe:1; detect duration overflow rather than silently truncating; build a canonical WAV.
+    confinement: No shell, network/file URL protocols or playlist demuxers; only uploaded bytes can become input.
+    scratch: FFmpeg n9.0.2 creates and normally unlinks its cache in /tmp; mount isolated size-limited transient storage there.
+    process: One decoder at a time per API; bounded staging slots, process deadline, kill/reap and bounded output.
+  image_identity: Resolve and record actual source, builder/runtime image digests and Go/Echo/FFmpeg/CMake/CUDA versions before packaging completes.
+go_foundation:
+  requirement_ids: [REQ-003, REQ-019, REQ-029, REQ-030, REQ-031]
+  packages:
+    logger: Standard-library log/slog JSONHandler; one injected logger per component, context-bound request fields.
+    middleware: Echo v5.4.0 RequestID, RequestLogger, Recover and RateLimiter; configure safe adapters rather than default content/error logging.
+    configuration: github.com/knadh/koanf/v2 v2.3.8; confmap/file/env-v2/basicflag providers, verified compatible module versions at F01.
+    validation: github.com/go-playground/validator/v10 v10.30.5; WithRequiredStructEnabled, reusable DTO/config checks plus explicit semantic rules.
+    rate_store: Echo middleware.RateLimiterStore and optional RateLimiterStoreContext; built-in RateLimiterMemoryStoreWithConfig in V1.
+  version_policy: Checked primary release/module sources on 2026-10-10; Go baseline 1.26.5 covers validator minimum 1.26.0 and Echo minimum 1.25.0. Resolve exact provider/transitive graph and go.sum in F01; reviewed updates only.
+  wiring: cmd/api and cmd/backend load/validate config, initialize logging, construct adapters/application and own shutdown; no service locator or DI framework.
+  boundaries:
+    domain: internal/domain; plain model/request/result/error types and invariant rules, no framework/config/adapter imports.
+    application: internal/application/transcription; admission/FIFO/cancellation orchestration and consumer-owned Normalizer/InferenceBackend ports; imports domain and standard library only.
+    adapters: internal/adapter/httpapi, audio, upstream, models and backend; multipart/Echo, FFmpeg, private HTTP, model storage and native subprocess integration; depend inward.
+    platform: internal/platform/config and logging; typed startup configuration and safe logging/context helpers, no application behavior.
+    checks: Module-import check rejects domain/application dependencies on adapters/platform/Echo/Koanf/validator; constructor wiring and context ownership receive behavior/race tests.
+  conventions: Effective Go and Go Code Review Comments; gofmt, go vet, errors.Is/As with wrapped safe errors, context first for blocking calls, cancellation propagation, no stored Echo Context or init-time business work; narrow interfaces at consumers.
+  error_contract:
+    requirement_ids: [REQ-013, REQ-019, REQ-029, REQ-031]
+    internal_owner: internal/domain Failure and FailureKind; application and port adapters exchange ordinary Go error values with protocol-neutral typed classification.
+    fields: Kind is a semantic failure category; Field is an optional logical input field; Cause is an optional wrapped error. No HTTP status/header, Echo value, public response message/type or JSON serialization tags.
+    service_kinds: [invalid_input, unsupported_audio, audio_too_long, unknown_model, queue_full, deadline_exceeded, not_ready, backend_unavailable, gpu_unavailable, provisioning_failed, shutting_down, internal]
+    http_code_mapping: {invalid_input: invalid_request, unsupported_audio: unsupported_audio, audio_too_long: audio_duration_limit, unknown_model: model_not_found, queue_full: queue_full, deadline_exceeded: operation_timeout, not_ready: not_ready, backend_unavailable: backend_unavailable, gpu_unavailable: gpu_unavailable, provisioning_failed: provisioning_failed, shutting_down: shutting_down, internal: internal_error}
+    wrapping: Small project-owned Error/Unwrap methods plus standard errors.Is/As and fmt.Errorf with %w; classification survives wrapping, never match error-message text or add an error framework.
+    port_conversion: Audio/upstream/backend adapters classify decoder, native, private HTTP and transport failures before returning through application ports; service code never inspects their transport statuses or payloads.
+    http_owner: internal/adapter/httpapi MapFailure and HTTPFailure; owning handler/shared Echo error handler adds HTTP status, safe public envelope and allowed headers. No service-layer HTTP or Echo error construction.
+    presentation_authority: contracts/openapi.yaml x-error-registry and ErrorEnvelope/Error, with existing health-specific Live/Ready/NotReady schemas retained. Do not serialize Failure/Cause directly or derive public messages from Error().
+    field_mapping: HTTP adapter maps known logical fields to the existing allowed param values; absent/unknown fields become null, never arbitrary user-supplied text.
+    fallback: Unknown or unclassified failures become 500 internal_error with a fixed safe message; causes/panic values never enter responses or raw logs. Classified failures keep their exact declared public status/code/type.
+    lifecycle: Observe response commitment/client loss; never write a second response or promise delivery after disconnect. Operation deadline and shutdown preserve their existing classification and recovery under REQ-011.
+    transport_only: Multipart/framing, payload cap, route and per-IP limiter failures remain HTTP-adapter concerns and use the existing registry; no artificial business error is needed for framework-only failures.
+    scope: Only HTTP error adaptation in V1; no gRPC/CLI/other protocol adapter, protocol selector or generic transport framework. Future adapters consume the same internal failures.
+    checks: Domain/application tests for direct/wrapped failures; HTTP registry/param/fallback/header/schema conformance; real route and private-port wiring; forbidden imports and absence of transport fields/tags in Failure.
+observability:
+  requirement_ids: [REQ-019, REQ-029]
+  output: JSON stdout in both Go binaries; native/decoder output is drained and reduced to safe events, never logged verbatim.
+  request_id:
+    header: X-Request-ID
+    accepted: Exactly one value matching ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$; otherwise generate and replace the inbound value before RequestID/RequestLogger.
+    propagation: Response header on every API-produced response, owned context through queue/application and private supervisor HTTP; diagnostic only, not quota/auth/idempotency.
+    native: No C++ changes or native request-ID guarantee; supervisor owns correlation around the native call.
+  fields: [time, level, msg, component, event, request_id, method, route, status, duration_ms, error_code]
+  exclusions: No audio/prompt/transcript, raw path/query/URI, headers/client IP/filename, model URL, settings dump, raw error or panic/stack; unknown routes use a fixed route label.
+  middleware_order: Request-ID validation/generation then RequestLogger then safe Recover then transcription-only RateLimiter then bounded input/application; test actual Echo execution order and final error status.
+rate_limit:
+  requirement_ids: [REQ-011, REQ-014, REQ-019, REQ-030, REQ-031]
+  route: POST /v1/audio/transcriptions only; count attempts before reading uploads, decoding and queue admission; probes are exempt.
+  algorithm: Existing Echo memory store uses golang.org/x/time/rate token buckets; configured requests/second and burst.
+  identity: Canonical net/netip IPv4 or IPv6, unmap IPv4-mapped addresses; direct peer by default. XFF mode trusts only explicit CIDRs and walks right-to-left; disable Echo implicit private/loopback/link-local trust.
+  denial: 429 rate_limit_exceeded with positive integer Retry-After seconds; queue_full stays distinct and does not promise a refill time.
+  storage_error: Normalize every store error to allow=false at the injection boundary, then fail closed with 503 rate_limit_unavailable; Echo DenyHandler distinguishes store errors from quota denial. Echo otherwise checks the boolean before the error.
+  lifecycle: One store per API process; idle TTL uses existing store cleanup, restart resets, multiple Pods and NAT share only their local/IP scope; churn/expiration stability must be checked.
+  extension: Inject the existing Echo store interface at the HTTP adapter constructor; test with a substitute store. Future Redis/other stores may add bounded context-aware calls via RateLimiterStoreContext; no Redis dependency/credentials/distributed semantics in V1.
+  limits: TTL cleanup does not impose a hard active-IP cardinality cap; document this store's modest-load scope and retain body/staging/queue limits. Do not advertise protection from arbitrary network floods.
+configuration:
+  format: JSON
+  schema_version: 1
+  environment_prefix: WHISPER_
+  precedence: [command-line, environment, configuration-file, defaults]
+  overrides: Collections replace; Helm resolves its normal values precedence into the same canonical configuration.
+  reload: restart only
+  unknown_keys: startup failure
+  cli: --config plus explicit scalar flags; --catalog-json and --download-set-json replace collections.
+  validation: Both binaries use the same strict loader and semantic validator before listening/native startup; the API does not provision models. Koanf layers canonical typed values and validator checks DTOs; no permissive binding to domain.
+  strict_loading: Standard-library JSON token precheck rejects duplicate keys/trailing documents; reject unknown keys per source before merge, unmarshal with ErrorUnused and strict scalar types, normalize only documented env/CLI representations. Collections replace via scoped merge handling; StrictMerge alone is not unknown/duplicate-key validation. Only explicitly supplied CLI flags override lower layers.
+  settings:
+    - id: CFG-MODE
+      key: mode
+      type: string
+      default: resident
+      validation: Only resident; deferred modes, per-model policies and warmup settings fail.
+      requirement_ids: [REQ-003, REQ-007, REQ-008, REQ-021]
+    - id: CFG-CATALOG
+      key: models.catalog
+      type: array
+      default: bootstrap_catalog
+      validation: Unique ASCII IDs matching [A-Za-z0-9][A-Za-z0-9._-]{0,127}; exactly one download or prepared source.
+      requirement_ids: [REQ-003, REQ-004, REQ-005]
+    - id: CFG-SERVED
+      key: models.served
+      type: string
+      default: base
+      validation: Exactly one declared ID; other request IDs never load/switch.
+      requirement_ids: [REQ-003, REQ-004, REQ-006]
+    - id: CFG-DOWNLOADS
+      key: models.downloadSet
+      type: array
+      default: [base]
+      validation: Unique catalog IDs with download sources; explicit sets replace the bootstrap set.
+      requirement_ids: [REQ-003, REQ-004, REQ-005]
+    - id: CFG-API-HOST
+      key: api.host
+      type: string
+      default: 0.0.0.0
+      validation: Valid bind address.
+      requirement_ids: [REQ-003, REQ-015]
+    - id: CFG-API-PORT
+      key: api.port
+      type: integer
+      default: 8080
+      validation: 1..65535; non-root binding.
+      requirement_ids: [REQ-003, REQ-015]
+    - id: CFG-BACKEND-URL
+      key: api.backendUrl
+      type: string
+      default: http://backend:8081
+      validation: Operator-configured private address; Kubernetes replaces this example with the paired ordinal Service.
+      requirement_ids: [REQ-003, REQ-006, REQ-016]
+    - id: CFG-BACKEND-PORT
+      key: backend.port
+      type: integer
+      default: 8081
+      validation: 1..65535; private listener.
+      requirement_ids: [REQ-003, REQ-015, REQ-016]
+    - id: CFG-NATIVE-PORT
+      key: backend.nativePort
+      type: integer
+      default: 8082
+      validation: 1..65535; distinct port, loopback only.
+      requirement_ids: [REQ-003, REQ-015, REQ-019]
+    - id: CFG-GPU
+      key: backend.gpuDevice
+      type: integer
+      default: 0
+      validation: Non-negative ordinal within allocated compatible CUDA devices.
+      requirement_ids: [REQ-002, REQ-003]
+    - id: CFG-CACHE
+      key: storage.cacheDir
+      type: string
+      default: /models
+      validation: Backend-only writable cache; shared writers require functioning POSIX locking and atomic publication.
+      requirement_ids: [REQ-003, REQ-005, REQ-015, REQ-016]
+    - id: CFG-QUEUE
+      key: queue.waitingCapacity
+      type: integer
+      default: 16
+      validation: Non-negative; excludes the single active operation.
+      requirement_ids: [REQ-003, REQ-011]
+    - id: CFG-AUDIO-BYTES
+      key: limits.audioBytes
+      type: integer
+      default: 26214400
+      validation: Positive audio payload bound, excluding bounded multipart framing.
+      requirement_ids: [REQ-003, REQ-012]
+    - id: CFG-PROMPT-BYTES
+      key: limits.promptBytes
+      type: integer
+      default: 8192
+      validation: Positive UTF-8 byte bound.
+      requirement_ids: [REQ-003, REQ-012]
+    - id: CFG-AUDIO-SECONDS
+      key: limits.decodedSeconds
+      type: integer
+      default: 900
+      validation: Positive; validate actual decoded sample count.
+      requirement_ids: [REQ-003, REQ-012]
+    - id: CFG-OPERATION
+      key: timeouts.operationSeconds
+      type: integer
+      default: 600
+      validation: Positive absolute deadline from valid queue admission; waiting plus execution.
+      requirement_ids: [REQ-003, REQ-011]
+    - id: CFG-CLEANUP
+      key: timeouts.cleanupSeconds
+      type: integer
+      default: 10
+      validation: Positive safe stop/reap and request-cleanup bound; subsequent model reload stays unready.
+      requirement_ids: [REQ-003, REQ-011, REQ-017, REQ-018]
+    - id: CFG-SHUTDOWN
+      key: timeouts.shutdownSeconds
+      type: integer
+      default: 30
+      validation: Positive; orchestration adds cleanup time and signal margin.
+      requirement_ids: [REQ-003, REQ-017]
+    - id: CFG-PROVISION
+      key: timeouts.provisioningSeconds
+      type: integer
+      default: 1800
+      validation: Positive absolute provisioning/startup budget.
+      requirement_ids: [REQ-003, REQ-004, REQ-005, REQ-017]
+    - id: CFG-ATTEMPTS
+      key: downloads.attempts
+      type: integer
+      default: 3
+      validation: Positive attempts and backoff fit the provisioning deadline.
+      requirement_ids: [REQ-003, REQ-005]
+    - id: CFG-LOG-LEVEL
+      key: logging.level
+      type: string
+      default: info
+      validation: debug, info, warn or error; JSON format fixed, all levels obey privacy rules.
+      requirement_ids: [REQ-003, REQ-019, REQ-029, REQ-031]
+    - id: CFG-RATE-ENABLED
+      key: api.rateLimit.enabled
+      type: boolean
+      default: true
+      validation: Explicit boolean; probes remain exempt regardless of value.
+      requirement_ids: [REQ-003, REQ-030]
+    - id: CFG-RATE-STORE
+      key: api.rateLimit.store
+      type: string
+      default: memory
+      validation: Only memory in V1; redis/unknown storage is a startup failure.
+      requirement_ids: [REQ-003, REQ-030, REQ-031]
+    - id: CFG-RATE-RPS
+      key: api.rateLimit.requestsPerSecond
+      type: number
+      default: 1
+      validation: Finite positive number; token refill policy, not inference throughput.
+      requirement_ids: [REQ-003, REQ-030]
+    - id: CFG-RATE-BURST
+      key: api.rateLimit.burst
+      type: integer
+      default: 4
+      validation: Positive integer; no implicit framework default.
+      requirement_ids: [REQ-003, REQ-030]
+    - id: CFG-RATE-IDLE
+      key: api.rateLimit.idleSeconds
+      type: integer
+      default: 300
+      validation: Positive; at least burst divided by requestsPerSecond so expiration cannot refill a depleted bucket early.
+      requirement_ids: [REQ-003, REQ-030]
+    - id: CFG-CLIENT-IP
+      key: api.clientIP.source
+      type: string
+      default: direct
+      validation: direct or x-forwarded-for; forwarded mode requires explicit trusted proxy CIDRs.
+      requirement_ids: [REQ-003, REQ-019, REQ-030]
+    - id: CFG-TRUSTED-PROXIES
+      key: api.clientIP.trustedProxyCIDRs
+      type: array
+      default: []
+      validation: Unique valid IPv4/IPv6 CIDRs; no all-address wildcard, implicit private ranges or forwarding trust in direct mode; collection replacement applies.
+      requirement_ids: [REQ-003, REQ-019, REQ-030]
+  transient_storage:
+    mount: /tmp
+    ownership: Per-container disposable disk-backed work storage, separate from model cache.
+    limits: Bound aggregate staging requests, decoder input/output, part headers/fields and disk use before allocation.
+    startup: Clear only service-owned abandoned work, never cached/prepared model files or another live writer's partial.
+models:
+  requirement_ids: [REQ-004, REQ-005, REQ-006, REQ-008]
+  bootstrap_catalog:
+    - id: base
+      source:
+        kind: download
+        url: https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin
+        sha256: 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
+        expected_bytes: 147951465
+  download_source: HTTPS with immutable identity and required SHA256; optional expected byte size.
+  prepared_source: Read-only operator-mounted path, optional enforced SHA256; missing/invalid files fail without download/fallback.
+  publication: Per-artifact filesystem lock, recheck cache, bounded stream to random same-filesystem partial, verify, fsync and atomic rename; clean own/stale locked partials only.
+  metadata: Read the pinned Whisper GGML header for multilingual capability; never infer it from a filename/ID.
+  offline: Valid cache/prepared files make no model-source HTTP requests.
+private_backend:
+  requirement_ids: [REQ-006, REQ-007, REQ-011, REQ-013, REQ-014, REQ-017, REQ-019]
+  native_listener: 127.0.0.1:8082
+  supervisor_routes: [POST /inference, GET /health]
+  unknown_routes: 404
+  health_fields: [status, protocol_version, configuration_fingerprint, process_generation, model, multilingual, cuda_ready]
+  ready: Loaded native health plus exact whitelisted CUDA backend and positive model-buffer allocation startup evidence; compatible model/configuration, healthy GPU, no recovery/shutdown.
+  gpu_guard: Startup GPU enumeration alone is insufficient; native no-GPU/CPU-only initialization or later detected driver/GPU failure prevents readiness and serving.
+  inference_headers:
+    X-Request-ID: Validated API correlation ID; safe fallback generation for missing private diagnostics, not part of the model fingerprint.
+    X-Whisper-Protocol: '1'
+    X-Whisper-Configuration: Canonical model/inference configuration fingerprint.
+    X-Whisper-Generation: Fresh native-process generation from private health.
+    X-Whisper-Timeout-Ms: Positive remaining operation duration, capped by configuration.
+  invariants:
+    - One native child/model and one active inference; no second waiting queue.
+    - Configuration/generation mismatch rejects before forwarding; never silently retry submitted work.
+    - Forward only normalized WAV and a fixed field allowlist; native /load, file serving and conversion are inaccessible.
+    - Successful inference preserves the native process and loaded model.
+    - Active cancellation/expiry or uncertain transport state makes unready, terminates the native process group, kills if needed and Wait/reaps before replacement or reuse.
+    - Model reload may exceed cleanup time but cannot overlap the previous process; readiness remains false.
+    - Backend enforces its own deadline after API death or missed disconnect.
+    - Drain native stdout/stderr with bounded buffers; discard raw content and emit only safe structured stage/device/allocation/exit diagnostics.
+deployment:
+  requirement_ids: [REQ-001, REQ-002, REQ-015, REQ-016, REQ-017, REQ-019]
+  api_controller: StatefulSet
+  backend_controller: StatefulSet
+  pairing: api-n to backend-n through a per-ordinal ClusterIP Service selecting statefulset.kubernetes.io/pod-name; no common inference backend load balancer.
+  replicas_default: 1
+  gpu:
+    request_default: 1
+    limit_default: 1
+    validation: Positive matching nvidia.com/gpu request/limit; backend only.
+  images: Separate configurable repository/tag/digest; prefer digest and record both actual identities.
+  public_service: Internal ClusterIP by default, port 8080.
+  ingress:
+    enabled: false
+    configurable: [host, className, annotations, tls]
+    boundary: Public API only; existing controller/certificates, no built-in authentication.
+  scheduling: [nodeSelector, affinity, tolerations, runtimeClassName]
+  resources: Separate configurable CPU/RAM requests/limits; insufficient GPU may remain Pending, never fall back to CPU.
+  storage:
+    cache: Per-backend volumeClaimTemplate, or existing operator claim/prepared files; validate access modes against replicas/node placement.
+    retention: Retain/Retain; uninstall preserves generated cache claims and all operator-owned claims/files.
+    transient: Separate size-limited disk-backed emptyDir mounted at /tmp for each container.
+  networking: Per-ordinal NetworkPolicy admits paired API to supervisor; native listener is loopback. Real CNI enforcement and positive/negative runtime checks are mandatory.
+  security: Non-root, read-only root, no privilege escalation, dropped capabilities, no service-account token; API has no GPU.
+  probes: Independent bounded health; startup accommodates provisioning/load, without synthetic inference.
+  termination_grace_default_seconds: 45
+  termination_grace_validation: At least shutdown plus cleanup plus 5 seconds.
+  rollout: Ordered StatefulSet replacement without surge; independent controllers fail closed during model/configuration mismatch; documented downtime.
+future:
+  requirement_ids: [REQ-008, REQ-009, REQ-010, REQ-021, REQ-022]
+  delivered: false
+  authority: ../spec.md#req-022-required-development-after-v1
+  directions:
+    - External Redis/other rate-limit stores and cluster-wide quota semantics; retain the V1 replaceable store interface but do not promise distributed behavior.
+    - ram-cache/on-demand, per-request model selection, policies and warmup/unload with allocation-based lifecycle proof.
+    - Investigate an upstream fork/extension; proxying does not establish native memory lifecycle capabilities.
+    - Authentication/authorization and access issuance/administration; proposed lightweight admin UI and Prometheus metrics.
+  v1: Deferred settings reject; deferred and unknown public routes return 404.
+
+# Delivery contract for the confirmed Resident V1 scope.
+delivery:
+  requirement_ids: [REQ-024, REQ-025, REQ-026, REQ-027, REQ-028]
+  repository:
+    github: swimmwatch/openwhispr-whisper-server
+    visibility: public
+    go_module: github.com/swimmwatch/openwhispr-whisper-server
+    own_license: Apache-2.0
+    third_party: Verify actual distributed licenses/notices; the project license does not replace dependency licenses.
+    contributor_platform: Linux amd64; ordinary checks/builds need neither GPU nor maintainer credentials.
+  agent_support:
+    clients: [Codex]
+    instructions: Root AGENTS.md is the single authoritative project instruction source.
+    project_skills: gpu-acceptance and release-verification live in portable project-local .agents/skills directories; verify actual Codex discovery and sources.
+    external_workflows: Operator-installed developer tooling, not vendored or required for I03 project acceptance. Explicitly invoked external workflows retain their own matching manual/MCP prerequisites; project rules do not bypass them.
+    local_workflows: [gpu-acceptance, release-verification]
+    configuration: Project-local reviewed settings; no tokens, personal paths, histories, global provider/trust changes or automatic publication authority.
+    lookup: Use CodeGraph first only when an index already exists; no unsolicited index creation. Keep tool availability explicit.
+  images:
+    api:
+      ghcr: ghcr.io/swimmwatch/openwhispr-whisper-server-api
+      dockerhub: docker.io/swimmwatch/openwhispr-whisper-server-api
+    backend:
+      ghcr: ghcr.io/swimmwatch/openwhispr-whisper-server-backend
+      dockerhub: docker.io/swimmwatch/openwhispr-whisper-server-backend
+    invariant: Same selected immutable image manifests in both registries; verify anonymous pulls and attached SBOM/provenance.
+    platform: linux/amd64
+    namespaces: Selected by the user; Docker Hub ownership, repository collisions and credentials remain unverified.
+  chart:
+    name: whisper-server
+    source: charts/whisper-server
+    oci_repository: ghcr.io/swimmwatch/charts/whisper-server
+    oci_push_destination: oci://ghcr.io/swimmwatch/charts
+    classic_repository: https://swimmwatch.github.io/openwhispr-whisper-server/
+    invariant: One packaged tgz per version, identical archive SHA256 in OCI and Pages; record OCI manifest digest separately.
+    classic_index: Merge/preserve old index entries and checksums; serialize publication without cancelling a publishing run.
+    metadata: apiVersion v2, SemVer version, quoted appVersion, public home/sources/maintainer, actual chart license.
+    packaging: Include only required templates/defaults/schema/license/notices and final chart README; .helmignore excludes work/history/secrets.
+  versioning:
+    initial_candidate_example: v0.1.0-rc.1
+    initial_stable_example: v0.1.0
+    semantics: Examples are a reversible initial convention; immutable candidate numbers increase whenever published bytes change.
+    chart_version: SemVer without the Git tag's leading v; prerelease candidates use the same rc suffix.
+    app_version: Quoted application version; chart and application versions are distinct identities even when initially aligned.
+    image_aliases: Immutable candidate/full-source aliases; stable semantic aliases/latest advance only after stable validation.
+  pipeline:
+    implementation: GitHub Actions; no GPU required for clean image builds.
+    untrusted_pr: pull_request on hosted Linux runners, contents read only, no secrets/push/cluster/self-hosted access; never execute PR code under pull_request_target.
+    bootstrap_checks: Existing module/tool/config/contract checks only; no placeholder tests or file-exists skips masquerading as a complete release pipeline.
+    release_checks: Go formatting/vet/tests/race, contract/workflow/Dockerfile checks, both clean builds, image/security/license metadata, Helm validation/package and public pull-back.
+    pins: Full action SHAs and real immutable source/base/tool identities; dependency updates through reviewed PRs.
+    credentials: GHCR job-scoped GITHUB_TOKEN packages write; Docker Hub scoped token via protected secrets; Pages deployment scoped separately; no kube credentials.
+    build_evidence: BuildKit SBOM/provenance preserved by chosen exporter/registry; inspect actual uploaded attestations, never pass secrets as build args.
+    cache: Separate trusted release cache from untrusted PR writes; at least one clean release build without reused build layers.
+    cd: Artifact/release publication only; hardware deployment/acceptance remains manual.
+  security_checks:
+    requirement_ids: [REQ-019, REQ-026, REQ-028]
+    tools: [govulncheck, gosec, Hadolint, Trivy]
+    go_dependencies: govulncheck source analysis of both Go entry points and their packages with the release Go version, GOOS/GOARCH and build tags; reachable findings block. Go vulnerability reports do not use a universal HIGH/CRITICAL scale.
+    go_source: gosec local static analysis of owned production Go packages; unresolved findings block. Track rule-specific suppressions; no optional AI integration or blanket rule/path exclusions.
+    dockerfiles: Hadolint checks both actual Dockerfiles and embedded RUN shell; Trivy configuration checks cover container security settings. Lint is separate from image vulnerability evidence.
+    images: Trivy vulnerability and secret scans of both exact built/release image identities, including image configuration/history. Record detected packages and unidentified custom native components against actual SBOM/source inventory.
+    helm: Trivy scans chart templates with default and supported custom values plus actual helm template output from the P06 matrix; scan the extracted packaged chart before release as well.
+    secrets: Trivy filesystem/image secret checks without severity filtering; scan tracked/project source and extracted chart content, not only a tgz. Exclude Git internals, private local state and MCP-owned workflow documents/archives from filesystem reads.
+    project_invariants: Check rendered API/backend non-root and privilege restrictions, service-account token absence, GPU assignment and paired network rules; scanner policy does not replace actual runtime/CNI/privacy tests.
+    stages: [bootstrap_source_secrets, pull_request, main, candidate, stable]
+    bootstrap: C01 checks existing source for secrets and scanner exit/report handling; Go/Docker/Helm/image checks become required in C02 with their actual inputs. Missing full-pipeline inputs are failures, not file-exists skips.
+    blocking: Any unsuppressed gosec issue, reachable govulncheck finding, secret finding, required Hadolint failure, HIGH/CRITICAL Trivy vulnerability/misconfiguration, scanner error, missing result or unsupported required coverage blocks the aggregate Security Check and release.
+    exceptions: Only evidenced false-positive/non-applicability entries scoped to exact rule/advisory and path/package, with maintainer, rationale and expiry; validate even inline suppressions. No blanket ignore-unfixed/no-fail/continue-on-error bypass or waiver for a known applicable blocking finding.
+    exit_handling: govulncheck JSON/SARIF/OpenVEX can exit zero with findings; enforce the text-mode exit or an explicitly tested finding parser. Preserve scanner and pipeline exit statuses; an uploaded report is not a passing check.
+    reports: Safe JSON/SARIF/summary artifacts retain rule/advisory, package/path/version, remediation and status; redact secret matches/snippets before logs/public uploads. Fork-safe artifact reporting must not require elevated publication rights.
+    evidence_fields: [scanner_version, database_or_rule_identity, scan_time, source_sha, image_manifest_digest, chart_archive_sha256, values_matrix_identity, finding_status, coverage_gaps, exception_refs]
+    freshness: Pin actual compatible scanner versions/actions; refresh supported vulnerability databases/rules for candidate and stable checks and record their identity/time. Stale or unavailable required data cannot silently reuse a prior green report.
+    coverage_limits: Custom whisper.cpp/FFmpeg/CUDA components may not be fully identified by image scanning; explicitly reconcile source/component advisory evidence instead of claiming zero vulnerabilities from an empty result.
+    promotion: R01 requires current complete Security Check before publication; R02 rescans accepted immutable image digests and the stable chart package. A database-only update renews security evidence; changed executable/runtime inputs require a new RC and affected GPU acceptance.
+  release:
+    states: [proposed, candidate_building, candidate_published_unqualified, candidate_qualified, stable_prepared, stable_complete, incomplete]
+    candidate_published_unqualified: All non-GPU build/publication checks and anonymous channel pulls pass; GPU qualification still outstanding.
+    candidate_qualified: The selected immutable candidate passes both real target suites plus all required CI/channel checks.
+    stable_prepared: Final docs and current CI/evidence match selected inputs; preserve executable digests and validate the stable chart's metadata/package change.
+    stable_complete: Versioned artifacts and chart index verified in all channels; stable aliases/latest designation finalized and read back.
+    inventory_fields: [candidate_version, candidate_source_sha, release_source_sha, build_input_identity, upstream_revision, base_digests, toolchain_versions, image_manifest_digests, chart_version, chart_archive_sha256, chart_oci_manifest_digest, ci_run_refs, security_report_refs, gpu_report_refs, channel_status]
+    drift: Changes invalidate affected evidence; executable/runtime/rendered behavior changes require new candidate and renewed affected GPU acceptance.
+    promotion: Retag accepted image manifests without rebuilding; stable chart has a new SemVer archive identity. Do not relabel original image build provenance.
+    failure: Failed/cancelled/skipped/missing required check or channel keeps release incomplete; fix and rerun, never weaken a correct check.
+    retry: Verify existing version bytes first; replay the same selected artifacts, or allocate a new candidate number when bytes change.
+    recovery: Preserve prior stable inventory/versions/cache; cross-channel writes are not atomic, so report partial state and restore prior aliases when necessary.
+
+

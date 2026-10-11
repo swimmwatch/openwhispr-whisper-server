@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/swimmwatch/openwhispr-whisper-server/security/advisories/new
+    about: Report suspected vulnerabilities privately; do not include secrets or private audio.
+  - name: Conduct concern
+    url: mailto:contact.vasiliev.dmitry@gmail.com
+    about: Contact the maintainer privately about community conduct.

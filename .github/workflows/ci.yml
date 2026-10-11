@@ -1,0 +1,80 @@
+name: Contributor CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  bootstrap:
+    name: Bootstrap checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up pinned Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Set up pinned Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12.3'
+      - name: Install hash-locked check dependencies
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r tools/requirements-ci.txt
+      - name: Install checksum-verified CI executables
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import tarfile
+          import urllib.request
+
+          versions = json.loads(Path('tools/versions.yaml').read_text())
+          destination = Path(os.environ['RUNNER_TEMP']) / 'whisper-ci-tools'
+          destination.mkdir()
+          for name, metadata in [('actionlint', versions['ci']['actionlint']),
+                                 ('trivy', versions['scanners']['trivy'])]:
+              archive = destination / (name + '.tar.gz')
+              with urllib.request.urlopen(metadata['download'], timeout=90) as source:
+                  archive.write_bytes(source.read())
+              if hashlib.sha256(archive.read_bytes()).hexdigest() != metadata['sha256']:
+                  raise SystemExit('CI tool archive checksum mismatch')
+              with tarfile.open(archive) as package:
+                  member = next(item for item in package.getmembers()
+                                if item.name.lstrip('./') == name and item.isfile())
+                  binary = destination / name
+                  binary.write_bytes(package.extractfile(member).read())
+                  binary.chmod(0o755)
+          with open(os.environ['GITHUB_PATH'], 'a') as output:
+              output.write(str(destination) + '\n')
+          PY
+      - name: Verify the actual Go module
+        run: |
+          go mod download
+          go mod verify
+      - name: Validate contracts and bootstrap policy
+        run: python tools/check_contracts.py
+      - name: Validate project agent files
+        run: python tools/check_agents.py
+      - name: Run tooling tests including the real secret scanner fixture
+        run: python -m unittest discover -s tests/tooling -v
+      - name: Lint workflow syntax
+        run: actionlint .github/workflows/ci.yml
+      - name: Scan current source for secrets with redacted output
+        run: python tools/security/check_secrets.py

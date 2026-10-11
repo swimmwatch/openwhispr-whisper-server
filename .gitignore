@@ -1,0 +1,49 @@
+# Local credentials and settings
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+/secrets/
+/config.local.*
+.claude/settings.local.json
+
+# Build, tooling and private evidence
+/.venv/
+# One-off agent scripts, probes, reports and local working files
+/.local/
+/bin/
+/build/
+/dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Model artifacts and user recordings
+/models/
+/model-cache/
+/audio/
+/recordings/
+*.gguf
+*.ggml
+ggml-*.bin
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.webm
+!/tests/fixtures/audio/*.wav
+!/tests/fixtures/audio/*.mp3
+!/tests/fixtures/audio/*.flac
+!/tests/fixtures/audio/*.ogg
+!/tests/fixtures/audio/*.m4a
+!/tests/fixtures/audio/*.webm
+
+# Agent state; keep project instructions, skills and shared settings trackable
+.codex/sessions/
+.codex/history.jsonl
+.codex/log/
+.claude/projects/
+.claude/history.jsonl
+.agents/.cache/

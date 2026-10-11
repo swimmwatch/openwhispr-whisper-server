@@ -1,0 +1,290 @@
+schema_version: 1
+kind: resident-quality-scenarios
+authority: ../spec.md
+configuration_authority: ../core/contracts.yaml
+http_authority: ../contracts/openapi.yaml
+requirement_ids: [REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-018, REQ-019, REQ-020, REQ-021, REQ-022, REQ-023, REQ-024, REQ-025, REQ-026, REQ-027, REQ-028, REQ-029, REQ-030, REQ-031]
+environments:
+  github_oss:
+    target: Public swimmwatch/openwhispr-whisper-server repository; selected owner/settings/access verified during setup.
+    status: unverified
+  ci:
+    target: Hosted Linux amd64 GitHub Actions; untrusted PR and protected trusted release contexts separated.
+    gpu: none
+    status: unverified
+  distribution:
+    target: GHCR and Docker Hub images; GHCR OCI and GitHub Pages charts; fresh anonymous clients.
+    status: unverified
+  unit:
+    platform: Linux amd64
+    gpu: none
+    evidence: Go tests with deterministic clocks, fault servers and disposable subprocesses.
+  builder:
+    platform: Linux amd64
+    gpu: none
+    evidence: Both actual image builds, source/digest metadata and executable contents.
+  docker_gpu:
+    gpu: RTX 5070 Ti Laptop GPU
+    target: Current machine, standalone Docker through public API.
+    status: unverified
+    capture: [OS, architecture, driver, VRAM, Docker, NVIDIA_runtime, images, CUDA, Go, Echo, FFmpeg, model_checksum]
+  homelab_gpu:
+    gpu: RTX 2060
+    target: User Home Lab Kubernetes through public API and Helm chart.
+    status: unverified
+    capture: [OS, architecture, driver, VRAM, Kubernetes, Helm, CNI, device_plugin, runtime_class, storage, images, chart, model_checksum]
+  chart_matrix:
+    kubernetes_minors: ['1.35', '1.36', '1.37']
+    helm_reference_minors: ['3.22', '4.3']
+    evidence: Render and validate API schemas only for Helm/Kubernetes combinations supported by official skew rules; record exact patches.
+    actual_homelab: Qualify its actual version separately, even when outside the generic matrix; do not silently exclude it.
+observation:
+  privacy: Collect safe stage/status/count/timing/allocation facts; no user audio, prompts, transcripts, filenames, raw native/decoder output or credentials.
+  runtime_proof: Public transcription plus matched native process/CUDA initialization, positive GPU model allocation and observed GPU inference activity; GPU listing alone never passes.
+  memory: Combine API request-resource counts, temporary-file/open-fd checks, RSS/GPU allocations, process identity and model-file open/read/mapping observation.
+  fixtures: Public reproducible audio; record source/license/SHA256 and encoding parameters. Synthetic privacy markers are disposable test data, never retained content logs.
+scenarios:
+  - id: Q-CONFIG
+    requirement_ids: [REQ-003, REQ-006, REQ-008, REQ-021]
+    packets: [F01, P01, P06]
+    environment: [unit, chart_matrix]
+    workload: Compare CLI/environment/JSON and rendered Helm configuration; invalid IDs, duplicate/unknown settings, inconsistent sets, deferred policies, positive bounds.
+    observation: Canonical configuration and startup/render failure, with zero backend starts for invalid configuration.
+    threshold: Matching valid configuration; collection replacement; every invalid case fails before serving.
+    planned_check: Config tables and chart-parity integration check.
+  - id: Q-CACHE
+    requirement_ids: [REQ-004, REQ-005, REQ-006, REQ-017]
+    packets: [P01, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Cache hit/offline restart, prepared file, missing prepared file, extra download-only model, served model replacement, interrupted/corrupt download, simultaneous writers.
+    observation: Source-boundary HTTP counters/denial, verified published SHA256, file identity, partial count and loaded model.
+    threshold: No source requests on cache hit/prepared mode, no fallback or reusable partial, prior valid cache preserved, corrected retry recovers within provisioning bounds.
+    planned_check: HTTP fault-server and filesystem-lock tests followed by offline real GPU restart.
+  - id: Q-STARTUP
+    requirement_ids: [REQ-002, REQ-006, REQ-007, REQ-008, REQ-014]
+    packets: [P02, P04, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Slow/failed load, absent/incompatible GPU, CPU-only native initialization, valid fixed-model load, repeated health calls.
+    observation: Readiness, child/generation identity, CUDA backend/model-buffer startup facts, model-init and inference counts.
+    threshold: Ready only after valid CUDA-resident load; no synthetic inference or health-triggered load; failures are unready.
+    planned_check: Supervisor subprocess tests and actual GPU readiness/load observations.
+  - id: Q-INPUT
+    requirement_ids: [REQ-012, REQ-013, REQ-019]
+    packets: [P03, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Every advertised audio family including Opus and MP4 with moov at end; duplicates/missing/unknown fields, wrong model, invalid UTF-8/language/temperature/stream, corrupt/no-audio content.
+    observation: HTTP status/schema, decoder output and upstream dispatch count.
+    threshold: Valid inputs transcribe; invalid inputs never dispatch; status/cause codes match OpenAPI.
+    planned_check: Multipart/decoder provider tests, real public API and intended OpenWhispr/OpenAI-compatible client calls.
+  - id: Q-BOUNDS
+    requirement_ids: [REQ-003, REQ-011, REQ-012, REQ-019]
+    packets: [P03, P04, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Payload at cap and one byte beyond, overlong decoded audio, slow upload, many staging requests, malformed headers, oversized prompt, decoder failure/hang and embedded external URLs/files.
+    observation: Byte/sample/staging counts, transient-volume use, deadline/child reaping, upstream count and forbidden source access traps.
+    threshold: Exact-cap valid file fits framing; excess rejects, no silent truncation, no unbounded allocations/storage/processes and no external decoder access.
+    planned_check: Boundary and malicious-container integration tests with a capped streaming producer and source traps.
+  - id: Q-FIFO
+    requirement_ids: [REQ-003, REQ-011, REQ-013]
+    packets: [P04, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Block first operation, submit ordered valid work, overflow capacity, test zero capacity, expire/cancel queued work.
+    observation: Actual backend entry/exit sequence, max active count and queue-admission counters.
+    threshold: FIFO for admitted non-cancelled work; max active one; default 16 waiting; overflow 429 and waiting expiry 408 never dispatch.
+    planned_check: Scheduler tests with controlled barriers plus bounded concurrent real GPU calls.
+  - id: Q-CANCEL
+    requirement_ids: [REQ-011, REQ-014, REQ-017, REQ-018, REQ-019]
+    packets: [P02, P04, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Active timeout, client disconnect, API death, missed disconnect and deliberately stuck native child; submit next valid request.
+    observation: Native child/process-group lifetime, reaping, generation changes, readiness, GPU work and request resources.
+    threshold: Old process/work is stopped before new inference; operation and cleanup deadlines apply; recovery remains unready while loading; no overlapping or silently retried work.
+    planned_check: Subprocess/transport tests and real GPU cancellation/forced-loss sequence.
+  - id: Q-ISOLATION
+    requirement_ids: [REQ-006, REQ-007, REQ-012, REQ-013, REQ-018]
+    packets: [P03, P04, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Alternate distinct recordings/languages/prompts including an empty prompt after a nonempty one; interleave invalid/failed/cancelled work.
+    observation: Per-request output and exact forwarded parameters, native process/model identity and control-request results.
+    threshold: No inherited language/prompt/result/context; valid requests remain usable and healthy successes preserve the resident process.
+    planned_check: Adapter parameter/reset checks and reproducible paired real inference controls.
+  - id: Q-HEALTH
+    requirement_ids: [REQ-008, REQ-014, REQ-017]
+    packets: [P04, P06, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Health during blocked inference, startup, backend death, GPU failure, recovery and shutdown.
+    observation: Probe latency/outcome and native model/inference counters.
+    threshold: Probes do not wait on inference or trigger load/inference; liveness stays responsive, readiness follows dependency/lifecycle state within bounded health timeout.
+    planned_check: Concurrent HTTP health test and real Pod/container probes.
+  - id: Q-FAILURE
+    requirement_ids: [REQ-005, REQ-006, REQ-013, REQ-014, REQ-017, REQ-019]
+    packets: [P02, P03, P04, P07, P08]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Backend 4xx/5xx, malformed/truncated reply, socket loss, child crash, OOM/init failure and failed model replacement.
+    observation: Public error schema, safe diagnostics, cache checksums, readiness/restart/generation.
+    threshold: No false 200 or mislabeled old-model transcript; bounded failure and restart/correction recover without cache destruction.
+    planned_check: Fault-provider tests plus container/Pod crash and bad-startup recovery.
+  - id: Q-PRIVACY
+    requirement_ids: [REQ-007, REQ-015, REQ-018, REQ-019]
+    packets: [P02, P03, P04, P05, P07, P08]
+    environment: [unit, builder, docker_gpu, homelab_gpu]
+    workload: Disposable recognizable markers in audio/prompt/transcript/filename; success, validation/conversion failure, cancellation, timeout, shutdown and abrupt kill.
+    observation: Emitted container logs, errors, layer/config identities, persistent/transient storage and open/unlinked scratch descriptors.
+    threshold: Markers occur only in intended response/test input, never content logs or retained application files; abandoned work clears on restart; both processes non-root and API has no GPU.
+    planned_check: Positive unauthenticated request plus negative marker/path-injection scans; mutation restores raw native output and must be detected.
+  - id: Q-RESIDENT
+    requirement_ids: [REQ-006, REQ-007, REQ-018, REQ-020]
+    packets: [P07, P08]
+    environment: [docker_gpu, homelab_gpu]
+    workload: Calibrate idle and isolated longest-input envelopes, then three blocks of 20 successful requests plus invalid/failed/cancelled/timed-out sequences and stop/restart.
+    observation: RSS/GPU samples, request-owner/live-file counts, native process/model-init count and model-file open/read/mapping facts.
+    threshold: Normal successes use one unchanged loaded process, no recurring model I/O/init, zero completed API request resources/files and no accumulating/model-size retained allocations; model-owned allocations disappear after worker stop. Record bounded native latest-result/allocator state, not zero total driver memory.
+    planned_check: Real GPU suite with safe syscall/allocation observations; intentionally retain a request file/reload per request and verify detection.
+  - id: Q-PACKAGING
+    requirement_ids: [REQ-001, REQ-002, REQ-015, REQ-019]
+    packets: [P05, P07]
+    environment: [builder, docker_gpu]
+    workload: Clean GPU-free builds of both images; inspect CUDA coverage/dependencies/digests, UID/mounts/listeners and private standalone connectivity.
+    observation: Build command/result, source/tree identity, binary architecture metadata and actual container behavior.
+    threshold: Linux amd64 GPU-free builds, unchanged native source, source-compatible CUDA architecture set, no embedded credentials, public API only.
+    planned_check: Docker builds and image contract checks followed by mandatory local CUDA transcription.
+  - id: Q-CHART
+    requirement_ids: [REQ-002, REQ-003, REQ-015, REQ-016, REQ-017]
+    packets: [P06, P08]
+    environment: [chart_matrix, homelab_gpu]
+    workload: Defaults/overrides, invalid values, replicas, ingress on/off, images, resources, claims, prepared files, scheduling and probes.
+    observation: Helm lint/render/schema/API validation plus actual Pods/Service/probes/events.
+    threshold: Matching configuration, separate paired Pods, positive matched GPU on backend only, bounded startup and grace; generic compatibility and Home Lab runtime recorded separately.
+    planned_check: Helm 3/4 supported skew combinations, malformed-value tests and live installation.
+  - id: Q-PAIRING
+    requirement_ids: [REQ-006, REQ-011, REQ-013, REQ-016, REQ-019]
+    packets: [P06, P08]
+    environment: [chart_matrix, homelab_gpu]
+    workload: Paired API, non-paired same-namespace Pod, other namespace, public native/admin routes and configuration/generation mismatch.
+    observation: Endpoint identity and successful/denied connections at actual CNI boundary.
+    threshold: Only API-n reaches backend-n; no common load-balanced inference backend, raw native port is unreachable and mismatch cannot forward.
+    planned_check: Positive paired inference plus negative network tests; remove/select wrong policy and confirm detection before restore.
+  - id: Q-ROLLOUT
+    requirement_ids: [REQ-005, REQ-006, REQ-016, REQ-017, REQ-018]
+    packets: [P07, P08]
+    environment: [docker_gpu, homelab_gpu]
+    workload: SIGTERM with active/queued work, forced kill, API/backend replacement, failed release then rollback on one GPU; uninstall and retained-cache reuse.
+    observation: Status/lost-connection outcomes, old/new child/Pod and GPU allocation lifetimes, cache/PVC identities.
+    threshold: Drain within shutdown bound then safe stop/cleanup; no spare-GPU surge wait, mismatched generations fail closed, prior cache preserved, uninstall retains claims/files.
+    planned_check: Standalone signal/restart tests and authorized Helm upgrade/rollback/uninstall in an isolated target namespace.
+  - id: Q-PERFORMANCE
+    requirement_ids: [REQ-020]
+    packets: [P07, P08]
+    environment: [docker_gpu, homelab_gpu]
+    workload: Same public audio/model/parameters; record startup separately, at least 30 steady requests at concurrency one and a declared concurrent queue sample.
+    observation: Model-load/startup time, queue wait, backend duration, public latency median/p95, audio duration, processing/audio ratio, API overhead, RAM/VRAM and errors.
+    threshold: Measurements and exact sample/environment identities are complete; no numeric latency/throughput SLO is asserted. Direct-backend comparison is recorded where possible, with access confined to the test boundary.
+    planned_check: Shared reproducible acceptance/measurement harness and separate reports for both GPUs.
+  - id: Q-FUTURE
+    requirement_ids: [REQ-008, REQ-009, REQ-010, REQ-021, REQ-022]
+    packets: [P01, P03, P09]
+    environment: [unit, docker_gpu, homelab_gpu]
+    workload: Deferred modes/settings/routes and final documented roadmap.
+    observation: Reject/404 without backend mutation; retained future contracts.
+    threshold: No V1 delivery claim for memory modes/model management/auth/admin/metrics; all REQ-022 obligations remain recorded.
+    planned_check: Negative route/config tests plus reader verification of future-development documentation.
+  - id: Q-CONTRACTS
+    requirement_ids: [REQ-023]
+    packets: [P01, P03, P06, P09]
+    environment: [unit, chart_matrix]
+    workload: Saved planning YAML and implementation API/config/chart examples.
+    observation: Real YAML parser, OpenAPI validator, valid references/IDs and provider-consumer contract checks.
+    threshold: All saved contracts parse/validate and implemented behavior matches authoritative definitions; no duplicate source of defaults/schemas.
+    planned_check: Contract conformance and example validation.
+
+  - id: Q-INIT
+    requirement_ids: [REQ-024]
+    packets: [I01, I02, P09]
+    environment: [unit, github_oss]
+    workload: Fresh checkout/profile, module/tool resolution without maintainer credentials, Git status, public repository identity/settings and complete community files.
+    observation: Actual local command exits, source/build exclusions, GitHub settings/community/private reporting route and final runnable documentation.
+    threshold: Portable usable repository and checks; Apache-2.0 own code/chart with correct dependency notices; no credentials/audio/models/history in source/build input; final README verified.
+    planned_check: Bootstrap checks and settings read-back; remove one required ignore/control in a disposable fixture and detect it; final independent reader.
+  - id: Q-AGENTS
+    requirement_ids: [REQ-025]
+    packets: [I03, P09]
+    environment: [unit]
+    workload: Fresh project session in a recorded Codex version, canonical AGENTS.md and both project-local skills, missing optional tools and private operator runbook resolution with explicit-target read-only API access.
+    observation: Actual Codex instruction/skill sources, Go/Docker/Helm boundary explanations, structural check failures for malformed or non-portable settings and sanitized local access exit.
+    threshold: Shared coherent rules and working discovery without personal paths, global config mutation, secrets or implicit release authority.
+    planned_check: Run tools/check_agents.py and fresh Codex acceptance; seed missing/malformed local skill metadata, an escaping/personal path or forbidden client config in disposable fixtures and verify rejection, then restore.
+  - id: Q-CI
+    requirement_ids: [REQ-024, REQ-026]
+    packets: [C01, C02]
+    environment: [ci]
+    workload: Fork/untrusted PR and trusted source, action pin/permissions inspection, deliberate failed required job, dependency/image/license reports.
+    observation: Real workflow run/jobs, effective rights, release-job exclusion, non-secret fixture probes and required-check state.
+    threshold: PR checks work without publish/cluster secrets or privileged runners; failed/cancelled/skipped required release check blocks completion; no placeholder success.
+    planned_check: actionlint and workflow permission assertions plus real fork-safe CI; inject a failed job in a disposable branch and observe release denial.
+  - id: Q-RELEASEBUILD
+    requirement_ids: [REQ-015, REQ-026, REQ-028]
+    packets: [P05, C02, R01]
+    environment: [builder, ci]
+    workload: Both clean Linux amd64 GPU-free builds and chart package, cold cache, pinned sources/bases, attestation exporter and license inventory.
+    observation: Actual build exits, unchanged native source/architecture metadata, image manifests, SBOM/provenance and exact chart archive bytes.
+    threshold: Every required build/check passes; no GPU/secret dependency or cache-hidden missing input; provenance/components describe actual uploaded artifacts.
+    planned_check: Release clean-build jobs and pulled-artifact inspection; remove required build input/change image digest in a disposable fixture and detect failure.
+  - id: Q-DISTRIBUTION
+    requirement_ids: [REQ-027, REQ-028]
+    packets: [C02, R01, R02, P09]
+    environment: [distribution]
+    workload: Two image channels and two chart channels, anonymous fresh pulls, image overrides, older index entry, channel failure, retry and immutable-version collision.
+    observation: Per-channel status/read-back, identical selected image manifests, tgz SHA256, distinct OCI chart manifest digest and retained index entries.
+    threshold: All required channels usable; older versions preserved; partial publish remains incomplete and retry never overwrites different bytes under the same version.
+    planned_check: Distribution conformance harness and actual anonymous pulls; deny one channel in a disposable fixture and verify completion cannot advance.
+  - id: Q-SECURITY
+    requirement_ids: [REQ-019, REQ-026, REQ-028]
+    packets: [C01, C02, R01, P09, R02]
+    environment: [ci, builder, chart_matrix, distribution]
+    workload: Source Go vulnerability/static checks, both Dockerfiles/images, source secrets, default/custom/rendered/packaged Helm matrix and candidate/stable scan freshness.
+    observation: Scanner versions/database/rules/time, exact source/image/chart/values identities, safe findings, coverage gaps, suppression inventory and aggregate Security Check conclusion.
+    threshold: Blocking findings or failed/missing/stale/unsupported required scans deny release; secret matches are redacted; no empty-input green, JSON-exit bypass, blanket suppression or image-digest mismatch.
+    planned_check: Actual scanner runs plus disposable vulnerable Go/unsafe Dockerfile/privileged manifest/fake-secret and exit-zero finding fixtures; expired or broad exception and stale/wrong-digest reports must be rejected.
+  - id: Q-RELEASEGATE
+    requirement_ids: [REQ-020, REQ-024, REQ-026, REQ-027, REQ-028]
+    packets: [R01, P07, P08, P09, R02]
+    environment: [ci, distribution, docker_gpu, homelab_gpu]
+    workload: RC build/fix/new-RC loop, missing GPU report, failed required job, stale inputs, final documentation, stable image promotion and stable chart repackage.
+    observation: Exact candidate/build/release sources, CI results, both GPU reports, inventory state, chart-render equivalence and stable aliases/latest.
+    threshold: Stable denied until current complete evidence; image digests preserved; chart metadata/version change validated; runtime drift renews affected acceptance; no automatic cluster deployment.
+    planned_check: Gate predicate tests written before workflow plus real pre-release qualification; remove report/change source/alias fixture one at a time and verify denial, then stable pull-back.
+  - id: Q-OBSERVABILITY
+    requirement_ids: [REQ-019, REQ-029]
+    packets: [F01, P02, P03, P04, P06, P09]
+    environment: [unit, chart_matrix]
+    workload: Startup/config failure, all API success/error/probe/unknown-route paths, valid/absent/duplicate/unsafe IDs, concurrent queue/private calls, recovery and unique private-content/panic markers at every level.
+    observation: Parse JSON stdout and response headers; compare owned context, queue and private supervisor IDs; inspect actual mapped status and safe event fields without raw content.
+    threshold: Same safe ID through every API-produced response and owned execution path; no cross-request contamination, unsafe metadata/content/stack leakage or loss of startup/recovery diagnostics.
+    planned_check: Structured logging/request-ID/privacy tests and real private-call/queue wiring checks; remove ID guard or inject raw error logging and detect the violation, then restore.
+  - id: Q-RATELIMIT
+    requirement_ids: [REQ-019, REQ-030]
+    packets: [F01, P03, P06, P09]
+    environment: [unit, chart_matrix]
+    workload: Exhaust/refill two IP quotas, oversized/slow denied uploads, health probes, forged/trusted multi-hop IPv4/IPv6 headers, substituted/erroring store, restart/separate stores and idle expiration after high-cardinality churn.
+    observation: Actual body reads/decoder starts/queue/backend calls, quota/error codes and positive Retry-After; canonical keys, store cleanup and Docker/Helm config parity.
+    threshold: Denied work has zero expensive side effects; 429 rate_limit_exceeded differs from queue_full and store failure is 503 rate_limit_unavailable; trusted IP rules hold, stale entries clear, probes bypass and no cluster-wide guarantee is claimed.
+    planned_check: Real Echo memory-store and route tests plus replaceable-store error/substitution checks; bypass rate middleware or enable untrusted forwarding in a reversible fixture and detect it.
+  - id: Q-GOFOUNDATION
+    requirement_ids: [REQ-003, REQ-031]
+    packets: [F01, P01, P03, P04, P09]
+    environment: [unit, ci]
+    workload: Resolved pinned module graph, forbidden domain/application imports, real constructor/port/context wiring, CLI/env/JSON precedence and malformed/unknown/duplicate/strict-type/collection configuration fixtures.
+    observation: Go module verification/minimum versions/licenses/security, gofmt/vet/tests/race and actual go list import graph; invalid startup never starts listener or native process.
+    threshold: Domain/application depend inward with consumer-owned ports and no framework/config/concrete adapter imports; maintained dependencies satisfy the baseline, strict settings and existing input/privacy bounds remain enforced.
+    planned_check: Architecture checker and startup/DTO/semantic conformance tests; inject one forbidden import or weaken collection/duplicate-key handling and detect the failure before restoring.
+
+  - id: Q-ERRORS
+    requirement_ids: [REQ-013, REQ-019, REQ-029, REQ-031]
+    packets: [F01, P02, P03, P04, P09]
+    environment: [unit, ci]
+    workload: Direct/wrapped typed service failures, decoder/private-backend failures, each public error-registry entry, transport-only rejection, unknown errors/private markers, field mapping, probes and disconnected/committed responses.
+    observation: Internal classification through errors.Is/As without HTTP dependencies; exact HTTP status/code/type/param/safe message and response ID; route/port wiring and absence of direct inner-error serialization.
+    threshold: Service errors contain no HTTP/Echo/JSON presentation metadata, known wrapped failures preserve classification, unknown failures are safe 500 internal_error, existing health/lifecycle contracts hold and no additional protocol is implemented.
+    planned_check: Failure/port and HTTP-mapper table tests plus real-route conformance/privacy/commitment checks; replace a known mapping with 500, serialize Cause or introduce an HTTP dependency/field in a disposable fixture and detect the violation before restoring.
+
+
