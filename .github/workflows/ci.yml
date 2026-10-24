@@ -215,7 +215,7 @@ jobs:
 
     - name: Cache PR image layers
       if: github.event_name == 'pull_request'
-      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ${{ env.CI_BUILD_CACHE_DIR }}
         key: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-${{ hashFiles('containers/*.Dockerfile',
