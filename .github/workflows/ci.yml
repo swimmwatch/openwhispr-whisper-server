@@ -375,7 +375,7 @@ jobs:
       env:
         P05_IMAGE_TESTS: '1'
         PYTHON: ${{ github.workspace }}/.venv/bin/python
-      run: go test -vet=off -race ./tests/integration -count=1 -parallel "$GOMAXPROCS"
+      run: go test -v -vet=off ./tests/integration -count=1 -parallel "$GOMAXPROCS"
 
   scan:
     name: Security scans
