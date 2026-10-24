@@ -8,7 +8,7 @@ runtime:
     language: Go
     framework: github.com/labstack/echo/v5
     framework_version: v5.4.0
-    toolchain_baseline: 1.26.5
+    toolchain_baseline: 1.27.3
     minimum_go: 1.26.0
   backend:
     upstream: OpenWhispr/whisper.cpp
@@ -38,7 +38,7 @@ go_foundation:
     configuration: github.com/knadh/koanf/v2 v2.3.8; confmap/file/env-v2/basicflag providers, verified compatible module versions at F01.
     validation: github.com/go-playground/validator/v10 v10.30.5; WithRequiredStructEnabled, reusable DTO/config checks plus explicit semantic rules.
     rate_store: Echo middleware.RateLimiterStore and optional RateLimiterStoreContext; built-in RateLimiterMemoryStoreWithConfig in V1.
-  version_policy: Checked primary release/module sources on 2026-10-10; Go baseline 1.26.5 covers validator minimum 1.26.0 and Echo minimum 1.25.0. Resolve exact provider/transitive graph and go.sum in F01; reviewed updates only.
+  version_policy: The user selected Go 1.27.3 on 2026-10-22 to address GO-2026-6809 in the previous 1.27.2 baseline; the baseline covers validator minimum 1.26.0 and Echo minimum 1.25.0. Resolve exact provider/transitive graph and go.sum in F01; reviewed updates only.
   wiring: cmd/api and cmd/backend load/validate config, initialize logging, construct adapters/application and own shutdown; no service locator or DI framework.
   boundaries:
     domain: internal/domain; plain model/request/result/error types and invariant rules, no framework/config/adapter imports.

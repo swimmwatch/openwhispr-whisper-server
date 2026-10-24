@@ -1,0 +1,12 @@
+name: Cache vulnerability database only
+description: Cache the daily Trivy database without retaining scan results or credentials.
+
+runs:
+  using: composite
+  steps:
+    - name: Restore and save the vulnerability database
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+      with:
+        path: ${{ env.CI_TRIVY_CACHE_DIR }}/db
+        key: ${{ env.CI_TRIVY_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/versions.yaml') }}-${{ env.CI_CACHE_DAY }}
+        restore-keys: ${{ env.CI_TRIVY_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/versions.yaml') }}-

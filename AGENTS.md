@@ -43,6 +43,33 @@ packet's pinned specification freshness before work and completion.
   the parent validates their evidence. Do not replace missing native scouts with
   nested CLI sessions or new user-visible chats.
 
+## Test behavior, not repository files
+
+- Write code and tests for observable project behavior: requests and responses,
+  returned values, state changes, errors, process/resource ownership and produced
+  artifacts. A test must demonstrate a concrete behavior or failure of our code.
+- Do not write custom checkers or tests for repository syntax, formatting, file
+  existence, documentation markers, exact source strings, field counts, private
+  library internals, YAML layout, workflow step names/order or whole configuration
+  dictionaries. Do not build a second copy of an implementation to compare it
+  with the first. Renaming or reorganizing equivalent code must not break tests.
+- Use the existing compiler, formatter and standard linters for source syntax and
+  formatting: Go tooling, Ruff, mypy, actionlint, ShellCheck and Helm tooling.
+  Do not wrap their work in another project-specific validation framework.
+- Do not add speculative repository-path, symlink or configuration guards as a
+  substitute for requested behavior tests, including during cleanup. Tests of a
+  checker whose only purpose is inspecting repository files are also prohibited.
+- Do not add tests that read GitHub workflow/action YAML to inspect its syntax,
+  structure, configuration or embedded commands. Use actionlint and ShellCheck;
+  test the actual application/tool functions independently of workflow files.
+- Validate external inputs and artifacts where actual runtime logic consumes
+  them: audio limits, request data, downloaded bytes, archives, scanner reports
+  and release evidence. Test the resulting behavior and failures; do not merely
+  test that a third-party parser, dataclass or filesystem API works.
+- During cleanup, delete redundant checkers and their tests rather than replacing
+  them with new checkers. Preserve the user's explicit tool/version choices and
+  tests that execute meaningful service, build, security or release behavior.
+
 ## Commits, versioning and changelog
 
 Use these pinned conventions; changing a convention version requires an explicit
@@ -108,9 +135,40 @@ These are project choices; do not scaffold unused layers or copy a template tree
   defaults, replace packages or add hot reload/storage/protocol behavior during
   a refactor. Material dependency/behavior changes belong to their owning plan.
 - **G06.** Use gofmt, go vet and behavior-focused tests; race checks cover relevant
-  concurrency in the supported environment. F01 owns import-boundary/error tests;
+  concurrency in the supported environment. Review package boundaries directly;
   later packets own adapter/process wiring. Test failure and resource ownership,
   not implementation shape. Go tool success alone does not prove GPU correctness.
+
+## Python tooling architecture
+
+- **PY01.** Python is contributor/CI tooling, not a service runtime dependency.
+  Keep executable CLI assembly separate from artifact, installation and security
+  policy modules. Preserve existing command arguments, exit behavior and report
+  schemas during refactoring. Importing a module must not run its CLI.
+- **PY02.** Use CPython 3.14.9 for all Python tooling, pinned in `.python-version`
+  and `pyproject.toml`. Use uv 0.13.5 to install Python and synchronize the project;
+  `uv.lock` is the sole dependency lock. Annotate functions and methods, including
+  test helpers. Keep `Any` at genuinely variable JSON/YAML boundaries; validate
+  external data before trusting it. Do not suppress an entire module's type errors.
+- **PY03.** Prefer small cohesive functions. Use classes for owned state or a
+  policy with several related operations, and frozen dataclasses for validated
+  records/options. Use composition and dependency injection at actual I/O
+  boundaries. Do not add inheritance trees, generic frameworks or mock-only
+  interfaces. Apply patterns only to demonstrated needs.
+- **PY04.** Share code at its narrowest common ownership point; do not couple
+  security policy to CLI parsing or publication to process startup. Preserve
+  subprocess cancellation/error handling, checksum verification, immutable
+  artifact identities and private scanner output. No shell interpolation of
+  untrusted inputs or expanded credential logging.
+- **PY05.** Use four-space indentation, one statement per line, English names,
+  explicit imports and Ruff formatting (100-character target). Ruff lint and
+  mypy settings live in `pyproject.toml`. Fix causes before adding a narrowly
+  justified suppression; do not disable rules to make a check pass.
+- **PY06.** Use the existing unittest suite. Test observable behavior, invalid
+  inputs and resource/error ownership; mock only external boundaries and retain
+  real-tool fixtures where required. New dependencies must serve a current need,
+  be declared in the appropriate project dependency group and locked in `uv.lock`.
+  Run the [Python checks](CONTRIBUTING.md#python-tooling) before completion.
 
 ## Docker and Compose architecture
 
@@ -199,12 +257,21 @@ or reported GPU resource substitutes for actual required acceptance.
 
 ## Current checks and workflow setup
 
-See [agent-setup.md](docs/agent-setup.md) for actual setup state and client
-evidence. Structural check: `rtk proxy python3 tools/check_agents.py`.
-The checker validates Codex project rules, local skills and reviewed configuration;
-its success does not replace native acceptance. Python 3.11+ is required for this developer
-tool. Go/image/chart/CI/GPU commands are planned in their packets until their
-harnesses exist. Do not revive retired temporary bootstrap scripts as prerequisites.
+Keep GitHub Actions `run` blocks as short shell orchestration. Put Python logic
+in typed, tested modules under `tools/` and invoke it through the locked uv
+environment; do not embed Python heredocs or `python -c` programs in workflow YAML.
+
+After changing GitHub Actions workflows or local composite actions, run the pinned
+actionlint from the repository root. Follow the installation and local check in
+[CONTRIBUTING.md](CONTRIBUTING.md#github-actions-linting); use automatic workflow
+discovery so new workflows are checked too. Fix findings instead of suppressing
+them, and report unavailable optional external checkers separately.
+
+See [agent-setup.md](docs/agent-setup.md) for project instruction and skill sources.
+There is no custom repository-file checker. Set up the pinned uv project with
+`uv python install` and `uv sync --locked`; use its ignored `.venv/` environment.
+Temporary task files remain under `.local/`. Use the checks and available harnesses
+owned by each packet. Do not revive retired temporary bootstrap scripts as prerequisites.
 
 Codex is the supported project agent. Keep local gpu-acceptance and
 release-verification skills under .agents/skills. Do not add another client

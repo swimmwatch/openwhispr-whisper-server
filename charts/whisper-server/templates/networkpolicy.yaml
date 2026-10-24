@@ -1,0 +1,24 @@
+{{- $name := include "whisper-server.fullname" . -}}
+{{- $c := include "whisper-server.config" . | mustFromJson -}}
+{{- range $ordinal := until (int .Values.replicaCount) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-pair-{{ $ordinal }}
+  labels:
+    {{- include "whisper-server.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "whisper-server.selector" (dict "root" $ "role" "backend") | nindent 6 }}
+      statefulset.kubernetes.io/pod-name: {{ $name }}-backend-{{ $ordinal }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "whisper-server.selector" (dict "root" $ "role" "api") | nindent 14 }}
+              statefulset.kubernetes.io/pod-name: {{ $name }}-api-{{ $ordinal }}
+      ports: [{protocol: TCP, port: {{ $c.backend.port }}}]
+{{- end }}

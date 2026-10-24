@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-10-24",
+  "build_input_identity": "sha256:23a4c1472d2627186dde1b46591523f9c3e763e7743074b6c8c1f891ee39a3be",
+  "components": [
+    {
+      "owner": "swimmwatch",
+      "expires": "2026-10-31",
+      "conclusion": "no_applicable_blocking_advisories",
+      "role": "api",
+      "name": "ffmpeg",
+      "version": "9.0.2",
+      "revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+      "rationale": "Reconciled all currently open/undetermined Debian FFmpeg entries against the pinned source and actual restricted build. Older resolved upstream entries are covered by 9.0.2; applicable MEDIUM advisories remain reported, not exempted. This is not a zero-vulnerability statement.",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/52xxx/CVE-2025-52290.json",
+          "sha256": "6009fe58dc3a316e73be567d45d19c25c33dde2aac9fe103217a6f6ad5fdcbf4"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/6xxx/CVE-2026-6385.json",
+          "sha256": "d8a69bfd22422569a048c8ce31d956b047575f28e295f2acc37dd235148a256c"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/107xxx/CVE-2026-107675.json",
+          "sha256": "16d1bce011824c1bae24ab9213fe89a901d45416d24125ab85a5654a76c7bc98"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/107xxx/CVE-2026-107677.json",
+          "sha256": "6f90636a28404903a0ead4a1a4f182c6b8c7108c5f20285b54669f63c24b079d"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/107xxx/CVE-2026-107696.json",
+          "sha256": "d48b51db4f1cfa27894d52ff5b87404d0e2aaf2e927135296ee6e2d6e219e988"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/107xxx/CVE-2026-107676.json",
+          "sha256": "d19a4bce46fae72143f82a02636d8c7395819c8c9fb7a0aa9ec3faca8daf17a8"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/107xxx/CVE-2026-107678.json",
+          "sha256": "80f31d689d3ecca9515c7c125ac68e2019135ab6d2bd896df4e8efcf84e02e47"
+        },
+        {
+          "url": "https://security-tracker.debian.org/tracker/source-package/ffmpeg",
+          "sha256": "9dcb820e9767e8a2c2f74ad7ad0e441f3177815e5f63df4cb6f99613f3df4710"
+        }
+      ],
+      "advisories": [
+        {
+          "id": "CVE-2025-52290",
+          "severity": "HIGH",
+          "disposition": "not_applicable",
+          "rationale": "The native h264 decoder and h264 parser are excluded from this audio-only build. The vulnerable H264 decoder helper is not available; MPEG-TS is also not an enabled demuxer. Actual image-profile tests enforce component absence."
+        },
+        {
+          "id": "CVE-2026-6385",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The dvdsub parser is excluded from the build. Subtitle decoding is not part of the PCM audio output contract; the actual image parser inventory is checked."
+        },
+        {
+          "id": "CVE-2026-107675",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "Network protocols and external libssh are disabled; only pipe/cache protocols are enabled."
+        },
+        {
+          "id": "CVE-2026-107677",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The DASH demuxer and network protocols are not compiled into this decoder."
+        },
+        {
+          "id": "CVE-2026-107696",
+          "severity": "HIGH",
+          "disposition": "not_applicable",
+          "rationale": "RTSP demuxing/network protocols are excluded. The API also allows only the fixed local-container demuxer whitelist."
+        },
+        {
+          "id": "CVE-2026-107676",
+          "severity": "MEDIUM",
+          "disposition": "applicable",
+          "rationale": "Conservatively retained for the linked libavutil component. The service emits only mono PCM16 audio and does not serialize HDR video metadata; no claim of an upstream fix is made."
+        },
+        {
+          "id": "CVE-2026-107678",
+          "severity": "MEDIUM",
+          "disposition": "applicable",
+          "rationale": "MOV remains supported. The PSSH recursive-free/quadratic-work issue is not claimed fixed: retain the advisory. Upload, decoder-slot, duration/output and wall-clock limits plus process-group kill/reaping bound this isolated decoder failure. The referenced upstream patch is still pending and is not backported speculatively."
+        }
+      ]
+    },
+    {
+      "owner": "swimmwatch",
+      "expires": "2026-10-31",
+      "conclusion": "no_applicable_blocking_advisories",
+      "role": "backend",
+      "name": "whisper.cpp",
+      "revision": "6ac14546046ffb17d144a08bcad65337e535cf5f",
+      "rationale": "Checked OpenWhispr and ggml-org public advisory feeds plus the separately published model-loader CVE. Empty repository feeds alone are not treated as proof of no vulnerabilities. Retained model-loader MEDIUM finding remains visible.",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/17xxx/CVE-2026-17513.json",
+          "sha256": "46d90c3750a9d4467e778646d9cd48c0a181871be340f441e8982e316d7cdaaf"
+        },
+        {
+          "url": "https://api.github.com/repos/OpenWhispr/whisper.cpp/security-advisories",
+          "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        {
+          "url": "https://api.github.com/repos/ggml-org/whisper.cpp/security-advisories",
+          "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ],
+      "advisories": [
+        {
+          "id": "CVE-2026-17513",
+          "severity": "MEDIUM",
+          "disposition": "applicable",
+          "rationale": "Conservatively retain the linked model-loader assertion finding. Models are fixed operator-selected checksum-verified assets, not request uploads. Invalid model bytes are rejected during staging where possible; no native fork/fix is claimed."
+        }
+      ]
+    },
+    {
+      "owner": "swimmwatch",
+      "expires": "2026-10-31",
+      "conclusion": "no_applicable_blocking_advisories",
+      "role": "backend",
+      "name": "cuda",
+      "version": "12.8.1",
+      "rationale": "Reconciled the current CUDA Toolkit bulletin against the shipped Linux runtime component inventory. Host GPU-driver/kernel security is an operator prerequisite and is outside this container-component conclusion.",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/33xxx/CVE-2025-33228.json",
+          "sha256": "6a949ac2d1116aca83d00da27d2b7800b0f794b6fed917d88e8a84cab0c23e2f"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/33xxx/CVE-2025-33229.json",
+          "sha256": "b0da20d911a0d1311e1f937decaca0307c0c725f0a7ccf1b88057168f4bc5556"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/33xxx/CVE-2025-33230.json",
+          "sha256": "1cb4a89986765bb03ff763aebcc814d8d90278f02c05d951c134252cf9e2762e"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/33xxx/CVE-2025-33231.json",
+          "sha256": "7b5b728507a5f61deb857f712b0ae7df34b9da0402069252cf266c8ddc9879d9"
+        }
+      ],
+      "advisories": [
+        {
+          "id": "CVE-2025-33228",
+          "severity": "HIGH",
+          "disposition": "not_applicable",
+          "rationale": "NVIDIA bulletin5755 concerns Nsight tooling/scripts or Windows installer behavior. The Linux runtime ships CUDA runtime/cuBLAS/cuFFT libraries, not Nsight tools or installers. Runtime dpkg inventory and absence-of-tools image checks are required; builder tooling is not copied into the final image."
+        },
+        {
+          "id": "CVE-2025-33229",
+          "severity": "HIGH",
+          "disposition": "not_applicable",
+          "rationale": "NVIDIA bulletin5755 concerns Nsight tooling/scripts or Windows installer behavior. The Linux runtime ships CUDA runtime/cuBLAS/cuFFT libraries, not Nsight tools or installers. Runtime dpkg inventory and absence-of-tools image checks are required; builder tooling is not copied into the final image."
+        },
+        {
+          "id": "CVE-2025-33230",
+          "severity": "HIGH",
+          "disposition": "not_applicable",
+          "rationale": "NVIDIA bulletin5755 concerns Nsight tooling/scripts or Windows installer behavior. The Linux runtime ships CUDA runtime/cuBLAS/cuFFT libraries, not Nsight tools or installers. Runtime dpkg inventory and absence-of-tools image checks are required; builder tooling is not copied into the final image."
+        },
+        {
+          "id": "CVE-2025-33231",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "NVIDIA bulletin5755 concerns Nsight tooling/scripts or Windows installer behavior. The Linux runtime ships CUDA runtime/cuBLAS/cuFFT libraries, not Nsight tools or installers. Runtime dpkg inventory and absence-of-tools image checks are required; builder tooling is not copied into the final image."
+        }
+      ]
+    }
+  ]
+}

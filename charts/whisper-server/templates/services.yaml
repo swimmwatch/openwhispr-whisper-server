@@ -1,0 +1,42 @@
+{{- $name := include "whisper-server.fullname" . -}}
+{{- $c := include "whisper-server.config" . | mustFromJson -}}
+{{- range $role := list "api" "backend" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-{{ $role }}-headless
+  labels:
+    {{- include "whisper-server.labels" $ | nindent 4 }}
+spec:
+  clusterIP: None
+  # Governing Services deliberately have no selector/shared inference endpoints.
+  ports: [{name: http, port: {{ ternary $c.api.port $c.backend.port (eq $role "api") }}, targetPort: http}]
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-api
+  labels:
+    {{- include "whisper-server.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports: [{name: http, port: {{ $c.api.port }}, targetPort: http}]
+  selector:
+    {{- include "whisper-server.selector" (dict "root" . "role" "api") | nindent 4 }}
+{{- range $ordinal := until (int .Values.replicaCount) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-backend-{{ $ordinal }}
+  labels:
+    {{- include "whisper-server.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports: [{name: http, port: {{ $c.backend.port }}, targetPort: http}]
+  selector:
+    {{- include "whisper-server.selector" (dict "root" $ "role" "backend") | nindent 4 }}
+    statefulset.kubernetes.io/pod-name: {{ $name }}-backend-{{ $ordinal }}
+{{- end }}

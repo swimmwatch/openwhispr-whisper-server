@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "scope": "Resolved P05 build inputs; local artifacts are unpublished and do not qualify GPU runtime or a release",
+  "platform": "linux/amd64",
+  "go": {
+    "version": "1.27.3",
+    "builder": "golang:1.27.3-bookworm@sha256:fea12ba16096adec0f699ce1c4da2154d320450e56c1f63671f95d2a3551c77b"
+  },
+  "api": {
+    "builder_runtime": "ubuntu:24.04@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc",
+    "decoder_tag": "n9.0.2",
+    "decoder_commit": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+    "decoder_source": "https://github.com/FFmpeg/FFmpeg/archive/946fcce07b6dcd0331c8cc609192aeff5e1924f8.tar.gz",
+    "decoder_sha256": "0aa2b1de2a5698b20a23e93d539a9a8e82ca0117496c5bdf05d198805f42bb3b",
+    "decoder_license": "LGPL-2.1-or-later; shared linkage; GPL/nonfree/autodetected external libraries disabled",
+    "decoder_disabled_decoders": [
+      "h264"
+    ],
+    "decoder_disabled_parsers": [
+      "h264",
+      "dvdsub"
+    ]
+  },
+  "backend": {
+    "cuda_builder": "nvidia/cuda:12.8.1-devel-ubuntu24.04@sha256:4b9ed5fa8361736996499f64ecebf25d4ec37ff56e4d11323ccde10aa36e0c43",
+    "cuda_runtime": "nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:828c4d878adcaa4265d80c95d8ec877149b49bb2419a4cf3bb6aa889bbb7ca2e",
+    "nvcc": "12.8.93",
+    "upstream_requested_ref": "6ac14546046ffb17d144a08bcad65337e535cf5",
+    "upstream_commit": "6ac14546046ffb17d144a08bcad65337e535cf5f",
+    "upstream_source": "https://github.com/OpenWhispr/whisper.cpp/archive/6ac14546046ffb17d144a08bcad65337e535cf5f.tar.gz",
+    "upstream_sha256": "ef9c2b2e765c245686acb86b3f4668eb70a83894d1d5f06164206217979073ad",
+    "server_blob": "b87ef27375fd614d9e7c9698ecda94b03e548eb6",
+    "server_sha256": "4edae36f55e3a751583cd2dfe32bb5b5516cf59a3c137254f08c7ac0bd3f5d59",
+    "cmake": "3.31.10",
+    "cmake_source": "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-linux-x86_64.tar.gz",
+    "cmake_sha256": "3cb3dd247b6a1de2d0f4b20c6fd4326c9024e894cebc9dc8699758887e566ca7",
+    "cmake_checksum_source": "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-SHA-256.txt",
+    "cuda_eula": "https://docs.nvidia.com/cuda/archive/12.8.1/eula/index.html",
+    "cuda_eula_sha256": "6722d4c310a2ec9ad869ede3371a648fe2cfc2baaf8e1ece2c35e1dccc05752c",
+    "runtime_security_packages": {
+      "dirmngr": "2.4.4-2ubuntu17.6",
+      "gnupg": "2.4.4-2ubuntu17.6",
+      "gnupg-utils": "2.4.4-2ubuntu17.6",
+      "gnupg2": "2.4.4-2ubuntu17.6",
+      "gpg": "2.4.4-2ubuntu17.6",
+      "gpg-agent": "2.4.4-2ubuntu17.6",
+      "gpgconf": "2.4.4-2ubuntu17.6",
+      "gpgsm": "2.4.4-2ubuntu17.6",
+      "gpgv": "2.4.4-2ubuntu17.6",
+      "keyboxd": "2.4.4-2ubuntu17.6",
+      "openssl": "3.0.13-0ubuntu3.16",
+      "libssl3t64": "3.0.13-0ubuntu3.16"
+    }
+  },
+  "identity_verification": "Image digests came from the registry's Linux amd64 manifests. Source archive hashes describe actual downloaded bytes from the pinned publisher commit URLs; CMake additionally matches the publisher checksum. The resolved native commit extends the existing unambiguous ref, without changing revisions. Each image records actual Go source-input hashes, executable build information, linked libraries and installed packages.",
+  "scratch_storage": "Separate disk-backed local volumes, bounded by application upload, staging, decoder and queue limits. No filesystem quota is promised; operators requiring one must supply quota-controlled backing storage. Cache ownership and scratch cleanup remain separate.",
+  "observed_tools": {
+    "docker_engine": "29.9.2",
+    "compose": "5.6.1",
+    "buildx": "0.38.1"
+  }
+}

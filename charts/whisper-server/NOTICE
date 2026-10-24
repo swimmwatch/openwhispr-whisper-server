@@ -1,0 +1,4 @@
+This chart includes native scheduling API schema definitions derived from
+Kubernetes v1.35.0, distributed under the Apache License, Version 2.0.
+Source: https://github.com/kubernetes/kubernetes/blob/v1.35.0/api/openapi-spec/swagger.json
+The source identity is pinned in tests/integration/testdata/chart-inputs.json.

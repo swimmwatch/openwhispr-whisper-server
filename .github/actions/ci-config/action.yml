@@ -1,0 +1,57 @@
+name: Load shared CI configuration
+description: Read project tool pins and configure common runner and cache settings.
+
+runs:
+  using: composite
+  steps:
+    - name: Export project settings
+      shell: bash
+      env:
+        GOTOOLCHAIN: local
+        GOWORK: 'off'
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: '5'
+        CI_ARTIFACT_RETENTION_DAYS: '7'
+        CI_PUBLICATION_RETENTION_DAYS: '30'
+        CI_ARTIFACT_COMPRESSION_LEVEL: '0'
+        CI_IMAGE_PLATFORM: linux/amd64
+        CI_DOWNLOAD_CACHE_DIR: .local/ci-downloads
+        CI_DOWNLOAD_CACHE_PREFIX: whisper-downloads-v1
+        CI_TRIVY_CACHE_DIR: .local/trivy-cache
+        CI_TRIVY_CACHE_PREFIX: whisper-trivy-db-v1
+        CI_BUILD_CACHE_DIR: ${{ runner.temp }}/buildkit-cache
+        CI_BUILD_CACHE_NEXT_DIR: ${{ runner.temp }}/buildkit-cache-next
+        CI_BUILD_CACHE_PREFIX: whisper-pr-buildkit-v1
+      run: |
+        set -euo pipefail
+        python_version=$(cat .python-version)
+        [[ "$python_version" =~ ^3\.[0-9]+\.[0-9]+$ ]]
+        printf '%s\n' \
+          "CI_PYTHON_VERSION=$python_version" \
+          "CI_CACHE_DAY=$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
+        for name in \
+          GOTOOLCHAIN GOWORK SEGMENT_DOWNLOAD_TIMEOUT_MINS \
+          CI_ARTIFACT_RETENTION_DAYS CI_PUBLICATION_RETENTION_DAYS \
+          CI_ARTIFACT_COMPRESSION_LEVEL CI_IMAGE_PLATFORM \
+          CI_DOWNLOAD_CACHE_DIR CI_DOWNLOAD_CACHE_PREFIX \
+          CI_TRIVY_CACHE_DIR CI_TRIVY_CACHE_PREFIX \
+          CI_BUILD_CACHE_DIR CI_BUILD_CACHE_NEXT_DIR CI_BUILD_CACHE_PREFIX; do
+          printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"
+        done
+        jq -er '
+          {
+            CI_BUILDX_VERSION: .ci.buildx.version,
+            CI_DOCKER_VERSION: .ci.docker.version,
+            CI_FFMPEG_VERSION: .ci.ffmpeg.version,
+            CI_BUILDKIT_IMAGE: .ci.buildkit.image,
+            CI_SBOM_GENERATOR: .ci.buildkit.sbom_generator,
+            CI_TRIVY_VERSION: .scanners.trivy.version
+          }
+          | to_entries[]
+          | if (.value | type) == "string" and (.value | test("^[^\\r\\n]+$"))
+            then "\(.key)=\(.value)"
+            else error("Missing or invalid CI tool pin: " + .key)
+            end
+        ' tools/versions.yaml >> "$GITHUB_ENV"
+
+    - name: Configure runner parallelism
+      uses: ./.github/actions/runner-parallelism

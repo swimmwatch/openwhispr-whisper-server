@@ -1,0 +1,31 @@
+name: Set up verified Trivy
+description: Install the pinned scanner and verify executable bytes before use.
+
+inputs:
+  destination:
+    description: Job-specific tool directory under runner.temp.
+    required: true
+  cache:
+    description: Cache the scanner binary in CI; disable it for protected publication.
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pinned Trivy
+      uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567
+      with:
+        version: ${{ env.CI_TRIVY_VERSION }}
+        path: ${{ inputs.destination }}
+        cache: ${{ inputs.cache }}
+
+    - name: Verify Action-installed Trivy bytes
+      shell: bash
+      env:
+        TOOL_DESTINATION: ${{ inputs.destination }}
+      run: |
+        set -euo pipefail
+        ln -s "$TOOL_DESTINATION/trivy-bin/trivy" "$TOOL_DESTINATION/trivy"
+        uv run --no-sync --no-dev python tools/install_ci.py \
+          --destination "$TOOL_DESTINATION" \
+          --tools trivy --verify-existing

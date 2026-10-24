@@ -1,80 +1,504 @@
-name: Contributor CI
+name: CI
 
-on:
-  pull_request:
+'on':
+  pull_request: null
   push:
-    branches: [main]
+    branches:
+    - main
 
 permissions: {}
 
 jobs:
   bootstrap:
-    name: Bootstrap checks
-    runs-on: ubuntu-24.04
+    name: source
+    runs-on: &runner ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
-    env:
-      GOTOOLCHAIN: local
-      GOWORK: 'off'
     steps:
-      - name: Check out source without persisted credentials
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up pinned Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Set up pinned Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.12.3'
-      - name: Install hash-locked check dependencies
-        run: |
-          python -m pip install --require-hashes --only-binary=:all: -r tools/requirements-ci.txt
-      - name: Install checksum-verified CI executables
-        shell: bash
-        run: |
-          python - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import tarfile
-          import urllib.request
+    - name: Check out source without persisted credentials
+      uses: &checkout actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
 
-          versions = json.loads(Path('tools/versions.yaml').read_text())
-          destination = Path(os.environ['RUNNER_TEMP']) / 'whisper-ci-tools'
-          destination.mkdir()
-          for name, metadata in [('actionlint', versions['ci']['actionlint']),
-                                 ('trivy', versions['scanners']['trivy'])]:
-              archive = destination / (name + '.tar.gz')
-              with urllib.request.urlopen(metadata['download'], timeout=90) as source:
-                  archive.write_bytes(source.read())
-              if hashlib.sha256(archive.read_bytes()).hexdigest() != metadata['sha256']:
-                  raise SystemExit('CI tool archive checksum mismatch')
-              with tarfile.open(archive) as package:
-                  member = next(item for item in package.getmembers()
-                                if item.name.lstrip('./') == name and item.isfile())
-                  binary = destination / name
-                  binary.write_bytes(package.extractfile(member).read())
-                  binary.chmod(0o755)
-          with open(os.environ['GITHUB_PATH'], 'a') as output:
-              output.write(str(destination) + '\n')
-          PY
-      - name: Verify the actual Go module
-        run: |
-          go mod download
-          go mod verify
-      - name: Validate contracts and bootstrap policy
-        run: python tools/check_contracts.py
-      - name: Validate project agent files
-        run: python tools/check_agents.py
-      - name: Run tooling tests including the real secret scanner fixture
-        run: python -m unittest discover -s tests/tooling -v
-      - name: Lint workflow syntax
-        run: actionlint .github/workflows/ci.yml
-      - name: Scan current source for secrets with redacted output
-        run: python tools/security/check_secrets.py
+    - name: Load shared CI configuration
+      uses: &ci_config ./.github/actions/ci-config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'true'
+
+    - name: Set up pinned Go
+      uses: &setup_go actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - name: Check Python formatting, lint and types
+      run: |
+        uv run --no-sync python -m ruff format --check tools tests/tooling
+        uv run --no-sync python -m ruff check tools tests/tooling
+        uv run --no-sync python -m mypy
+
+    - name: Install checksum-verified CI executables
+      run: |
+        uv run --no-sync python tools/install_ci.py --destination "$RUNNER_TEMP/whisper-ci-tools" --tools actionlint --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        echo "$RUNNER_TEMP/whisper-ci-tools" >> "$GITHUB_PATH"
+
+    - name: Set up verified Trivy
+      uses: ./.github/actions/setup-trivy
+      with:
+        destination: ${{ runner.temp }}/whisper-ci-tools
+        cache: 'true'
+
+    - name: Verify the actual Go module
+      run: |
+        go mod download
+        go mod verify
+
+    - name: Verify Go formatting and vet
+      run: |
+        gofmt -l internal > "$RUNNER_TEMP/gofmt-output"
+        test ! -s "$RUNNER_TEMP/gofmt-output"
+        gofmt -l cmd tests/integration > "$RUNNER_TEMP/gofmt-runtime"
+        test ! -s "$RUNNER_TEMP/gofmt-runtime"
+        go vet ./...
+
+    - name: Install FFmpeg for real audio and API tests
+      env:
+        FFMPEG_VERSION: ${{ env.CI_FFMPEG_VERSION }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
+        test "$(dpkg-query -W -f='${Version}' ffmpeg)" = "$FFMPEG_VERSION"
+
+    - name: Test real Go foundation behavior and concurrency
+      run: |
+        go test -race -vet=off ./cmd/... ./internal/... ./tests/integration -count=1 -parallel "$GOMAXPROCS"
+
+    - name: Run tooling tests including the real secret scanner fixture
+      run: uv run --no-sync python -m unittest discover -s tests/tooling -v
+
+    - name: Lint all GitHub Actions workflows
+      run: actionlint
+
+    - name: Prepare private source secret scan
+      run: |
+        umask 077
+        mkdir -p "$RUNNER_TEMP/source-secret"
+        printf '{}\n' > "$RUNNER_TEMP/source-secret/config.yaml"
+        : > "$RUNNER_TEMP/source-secret/ignore"
+
+    - name: Scan current source for secrets
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        version: ${{ env.CI_TRIVY_VERSION }}
+        scan-type: fs
+        scan-ref: .
+        scanners: secret
+        exit-code: '1'
+        format: json
+        output: ${{ runner.temp }}/source-secret/raw.json
+        trivy-config: ${{ runner.temp }}/source-secret/config.yaml
+        cache-dir: ${{ runner.temp }}/source-secret/cache
+        cache: false
+        skip-setup-trivy: true
+        hide-progress: true
+        skip-dirs: .git,.local,.venv,**/.workflow,**/__pycache__
+        skip-files: docs/specs/**/manifest.yaml,docs/specs/**/decisions.yaml
+      env:
+        TRIVY_SECRET_CONFIG: ${{ github.workspace }}/tools/security/trivy-secret.yaml
+        TRIVY_IGNOREFILE: ${{ runner.temp }}/source-secret/ignore
+
+    - name: Summarize source secret scan safely
+      run: uv run --no-sync python tools/security/check_secrets.py --report "$RUNNER_TEMP/source-secret/raw.json"
+
+    - name: Remove private source secret report
+      if: ${{ always() }}
+      run: rm -rf "$RUNNER_TEMP/source-secret"
+
+  chart:
+    name: chart
+    runs-on: *runner
+    timeout-minutes: &timeout30 30
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - uses: *setup_go
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - name: Install pinned chart tools and official API schemas
+      run: |
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/chart-tools" --tools helm3 helm4 kubernetes-schemas --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+
+    - name: Run the real P06 Helm, schema, configuration and boundary matrix
+      env:
+        P06_CHART_TESTS: '1'
+        P06_HELM3: ${{ runner.temp }}/chart-tools/helm3
+        P06_HELM4: ${{ runner.temp }}/chart-tools/helm4
+        P06_SCHEMA_DIR: ${{ runner.temp }}/chart-tools/schemas
+        PYTHON: ${{ github.workspace }}/.venv/bin/python
+      run: go test -vet=off ./tests/integration -run '^TestChart' -count=1 -parallel "$GOMAXPROCS"
+
+    - name: Package and retain actual scan inputs
+      run: uv run --no-sync --no-dev python tools/release/artifacts.py chart --helm "$RUNNER_TEMP/chart-tools/helm3"
+        --source-sha "$GITHUB_SHA" --output "$RUNNER_TEMP/artifacts/chart"
+
+    - uses: &upload_artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: chart
+        path: ${{ runner.temp }}/artifacts/chart
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
+
+  build:
+    name: build-${{ matrix.role }}
+    runs-on: *runner
+    timeout-minutes: &timeout120 120
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - name: Set up isolated parallel Buildx
+      id: builder
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      with:
+        version: ${{ env.CI_BUILDX_VERSION }}
+        name: whisper-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.role }}
+        driver: docker-container
+        driver-opts: image=${{ env.CI_BUILDKIT_IMAGE }}
+        buildkitd-flags: --root=/var/lib/buildkit
+        buildkitd-config-inline: |
+          [worker.oci]
+            max-parallelism = ${{ env.CI_BUILD_PARALLELISM }}
+        cache-binary: true
+        keep-state: false
+        cleanup: true
+
+    - name: Cache PR image layers
+      if: github.event_name == 'pull_request'
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+      with:
+        path: ${{ env.CI_BUILD_CACHE_DIR }}
+        key: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-${{ hashFiles('containers/*.Dockerfile',
+          'containers/build-inputs.json', 'go.mod', 'go.sum', 'tools/versions.yaml') }}-${{ github.sha
+          }}
+        restore-keys: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-
+
+    - name: Prepare image export
+      run: mkdir -p "$RUNNER_TEMP/artifacts/$ROLE"
+
+    - name: Generate OCI labels and registry annotations
+      id: metadata
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+      env:
+        DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+      with:
+        tags: type=sha,format=long
+        flavor: latest=false
+        labels: ${{ env.IMAGE_METADATA }}
+        annotations: ${{ env.IMAGE_METADATA }}
+
+    - name: Build GPU-free image with actual SBOM and provenance
+      id: image
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+      env:
+        DOCKER_BUILD_SUMMARY: 'false'
+        DOCKER_BUILD_RECORD_UPLOAD: 'false'
+      with:
+        builder: ${{ steps.builder.outputs.name }}
+        context: .
+        file: containers/${{ matrix.role }}.Dockerfile
+        platforms: ${{ env.CI_IMAGE_PLATFORM }}
+        build-args: |
+          SOURCE_REVISION=${{ github.sha }}
+          APP_VERSION=${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.version'] }}
+        labels: ${{ steps.metadata.outputs.labels }}
+        annotations: ${{ steps.metadata.outputs.annotations }}
+        outputs: type=oci,dest=${{ runner.temp }}/artifacts/${{ matrix.role }}/image.tar
+        provenance: mode=max
+        attests: type=sbom,generator=${{ env.CI_SBOM_GENERATOR }}
+        push: false
+        no-cache: ${{ github.event_name != 'pull_request' }}
+        cache-from: ${{ github.event_name == 'pull_request' && format('type=local,src={0}',
+          env.CI_BUILD_CACHE_DIR) || '' }}
+        cache-to: ${{ github.event_name == 'pull_request' && format('type=local,dest={0},mode=max,compression=zstd,compression-level=3',
+          env.CI_BUILD_CACHE_NEXT_DIR) || '' }}
+
+    - name: Verify and record exported image identities
+      env:
+        IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+      run: |
+        qualification=()
+        if [ "$EVENT_NAME" != pull_request ]; then
+          qualification=(--cold)
+        fi
+        uv run --no-sync --no-dev python tools/release/artifacts.py record-image --output "$RUNNER_TEMP/artifacts/$ROLE" --source-sha "$GITHUB_SHA" --expected-digest "$IMAGE_DIGEST" "${qualification[@]}"
+
+    - name: Replace PR cache without accumulating old blobs
+      if: github.event_name == 'pull_request'
+      run: |
+        rm -rf "$CI_BUILD_CACHE_DIR"
+        mv "$CI_BUILD_CACHE_NEXT_DIR" "$CI_BUILD_CACHE_DIR"
+
+    - uses: *upload_artifact
+      with:
+        name: ${{ matrix.role }}
+        path: |
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.tar
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.json
+        if-no-files-found: error
+        compression-level: ${{ env.CI_ARTIFACT_COMPRESSION_LEVEL }}
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        role:
+        - api
+        - backend
+    env:
+      ROLE: ${{ matrix.role }}
+      EVENT_NAME: ${{ github.event_name }}
+      IMAGE_METADATA: |
+        org.opencontainers.image.title=openwhispr-whisper-server-${{ matrix.role }}
+        org.opencontainers.image.description=${{ matrix.role == 'api' && 'Resident Whisper public API and bounded FFmpeg decoder' || 'Resident Whisper supervisor and unchanged CUDA native server' }}
+        org.opencontainers.image.authors=openwhispr-whisper-server contributors
+        org.opencontainers.image.vendor=openwhispr-whisper-server contributors
+        org.opencontainers.image.url=https://github.com/${{ github.repository }}
+        org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/${{ github.sha }}/docs/container-builds.md
+        org.opencontainers.image.source=https://github.com/${{ github.repository }}
+        org.opencontainers.image.version=0.0.0-dev+sha.${{ github.sha }}
+        org.opencontainers.image.revision=${{ github.sha }}
+        org.opencontainers.image.licenses=${{ matrix.role == 'api' && 'Apache-2.0 AND MIT AND BSD-3-Clause AND LGPL-2.1-or-later' || 'Apache-2.0 AND MIT AND BSD-3-Clause AND LicenseRef-NVIDIA-CUDA' }}
+
+  image-runtime:
+    name: Image runtime and license checks
+    needs:
+    - chart
+    - build
+    runs-on: *runner
+    timeout-minutes: *timeout30
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up pinned Docker with OCI image store
+      uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+      with:
+        version: ${{ env.CI_DOCKER_VERSION }}
+        set-host: 'true'
+        daemon-config: |
+          {"features":{"containerd-snapshotter":true}}
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - uses: *setup_go
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - uses: &download_artifact actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: '*'
+        path: ${{ runner.temp }}/artifacts
+
+    - name: Validate transferred OCI bytes and load the exact runtime images
+      run: |
+        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/artifacts"
+        docker load --input "$RUNNER_TEMP/artifacts/api/image.tar" &
+        api_load=$!
+        docker load --input "$RUNNER_TEMP/artifacts/backend/image.tar" &
+        backend_load=$!
+        load_status=0
+        wait "$api_load" || load_status=$?
+        wait "$backend_load" || load_status=$?
+        test "$load_status" -eq 0
+        for role in api backend; do
+          image_digest=$(jq -er '.manifest_digest' "$RUNNER_TEMP/artifacts/$role/image.json")
+          docker tag "$image_digest" "whisper-$role:local"
+        done
+
+    - name: Run the real P05 image, metadata, license and Compose checks without a GPU
+      env:
+        P05_IMAGE_TESTS: '1'
+        PYTHON: ${{ github.workspace }}/.venv/bin/python
+      run: go test -v -vet=off ./tests/integration -count=1 -parallel "$GOMAXPROCS"
+
+  scan:
+    name: Security scans
+    needs:
+    - bootstrap
+    - chart
+    - build
+    runs-on: *runner
+    timeout-minutes: *timeout120
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - uses: *setup_go
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - uses: *download_artifact
+      with:
+        path: ${{ runner.temp }}/artifacts
+
+    - name: Cache vulnerability database only
+      uses: ./.github/actions/cache-trivy-db
+
+    - name: Install pinned scanners
+      run: |
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/security-tools" --tools govulncheck gosec hadolint buildx helm3 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        echo "$RUNNER_TEMP/security-tools" >> "$GITHUB_PATH"
+
+    - name: Set up verified Trivy
+      uses: ./.github/actions/setup-trivy
+      with:
+        destination: ${{ runner.temp }}/security-tools
+        cache: 'true'
+
+    - name: Verify transferred OCI bytes
+      run: uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/artifacts"
+
+    - name: Exercise disposable registry and Helm index publication
+      env:
+        C02_PUBLISHER_TESTS: '1'
+        C02_ARTIFACTS: ${{ runner.temp }}/artifacts
+        C02_HELM: ${{ runner.temp }}/security-tools/helm3
+      run: uv run --no-sync --no-dev python -m unittest tests.tooling.test_publisher_execution -v
+
+    - name: Exercise real scanner denial fixtures
+      env:
+        C02_SCANNER_TESTS: '1'
+        C02_SCANNER_BIN: ${{ runner.temp }}/security-tools
+      run: uv run --no-sync --no-dev python -m unittest tests.tooling.test_scanner_execution -v
+
+    - name: Verify OCI artifacts and run every required scanner target
+      run: |
+        uv run --no-sync --no-dev python tools/security/run.py --artifacts "$RUNNER_TEMP/artifacts" --bin "$RUNNER_TEMP/security-tools" --output "$RUNNER_TEMP/security.json" --db-cache "$CI_TRIVY_CACHE_DIR"
+        uv run --no-sync --no-dev python tools/security/check.py --stage complete --inventory "$RUNNER_TEMP/security.json"
+
+    - name: Preserve safe scanner evidence
+      if: ${{ always() }}
+      uses: *upload_artifact
+      with:
+        name: security-summary
+        path: ${{ runner.temp }}/security.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
+
+  security:
+    name: Security Check
+    if: ${{ always() }}
+    needs:
+    - bootstrap
+    - chart
+    - build
+    - image-runtime
+    - scan
+    runs-on: *runner
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - name: Reject unsuccessful or missing required jobs
+      env:
+        NEEDS: ${{ toJSON(needs) }}
+      run: uv run --no-sync --no-dev python tools/release/artifacts.py jobs --needs "$NEEDS" --required
+        bootstrap chart build image-runtime scan
+
+    - uses: *download_artifact
+      with:
+        name: security-summary
+        path: ${{ runner.temp }}
+
+    - name: Validate the complete actual security inventory
+      run: uv run --no-sync --no-dev python tools/security/check.py --stage complete --inventory "$RUNNER_TEMP/security.json"
+
+concurrency:
+  group: whisper-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}

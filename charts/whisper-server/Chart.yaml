@@ -1,0 +1,30 @@
+apiVersion: v2
+name: whisper-server
+description: Resident Whisper API with dedicated CUDA backend pairs
+type: application
+version: 0.0.0-dev
+appVersion: "0.0.0-dev"
+keywords:
+  - whisper
+  - speech-to-text
+  - transcription
+  - cuda
+  - gpu
+home: https://github.com/swimmwatch/openwhispr-whisper-server
+sources:
+  - https://github.com/swimmwatch/openwhispr-whisper-server
+maintainers:
+  - name: swimmwatch
+    url: https://github.com/swimmwatch
+annotations:
+  org.opencontainers.image.licenses: Apache-2.0
+  org.opencontainers.image.documentation: https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/releases.md#helm-chart-metadata
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/category: ai-machine-learning
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/releases.md#helm-chart-metadata
+    - name: Chart source
+      url: https://github.com/swimmwatch/openwhispr-whisper-server/tree/main/charts/whisper-server
+    - name: support
+      url: https://github.com/swimmwatch/openwhispr-whisper-server/issues

@@ -1,0 +1,1170 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "replicaCount configures the corresponding chart or canonical service setting."
+    },
+    "nameOverride": {
+      "anyOf": [
+        {
+          "const": ""
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "maxLength": 63
+        }
+      ],
+      "description": "tlsSecretName configures the corresponding chart or canonical service setting."
+    },
+    "fullnameOverride": {
+      "anyOf": [
+        {
+          "const": ""
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "maxLength": 45
+        }
+      ],
+      "description": "fullnameOverride configures the corresponding chart or canonical service setting."
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+              "description": "repository configures the corresponding chart or canonical service setting."
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1,
+              "description": "tag configures the corresponding chart or canonical service setting."
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(sha256:[a-f0-9]{64})?$",
+              "description": "digest configures the corresponding chart or canonical service setting."
+            }
+          },
+          "required": [
+            "repository",
+            "tag",
+            "digest"
+          ],
+          "description": "backend configures the corresponding chart or canonical service setting."
+        },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+              "description": "repository configures the corresponding chart or canonical service setting."
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1,
+              "description": "tag configures the corresponding chart or canonical service setting."
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(sha256:[a-f0-9]{64})?$",
+              "description": "digest configures the corresponding chart or canonical service setting."
+            }
+          },
+          "required": [
+            "repository",
+            "tag",
+            "digest"
+          ],
+          "description": "backend configures the corresponding chart or canonical service setting."
+        }
+      },
+      "required": [
+        "api",
+        "backend"
+      ],
+      "description": "images configures the corresponding chart or canonical service setting."
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+            "maxLength": 63
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "description": "imagePullSecrets configures the corresponding chart or canonical service setting."
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "description": "schema_version configures the corresponding chart or canonical service setting."
+        },
+        "mode": {
+          "const": "resident",
+          "description": "mode configures the corresponding chart or canonical service setting."
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "catalog": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                  },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "download",
+                          "prepared"
+                        ]
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^([a-fA-F0-9]{64})?$"
+                      },
+                      "expected_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "kind": {
+                            "const": "download"
+                          },
+                          "sha256": {
+                            "pattern": "^[a-fA-F0-9]{64}$"
+                          },
+                          "url": {
+                            "minLength": 1
+                          },
+                          "path": {
+                            "const": ""
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "sha256"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "kind": {
+                            "const": "prepared"
+                          },
+                          "path": {
+                            "pattern": "^/"
+                          },
+                          "url": {
+                            "const": ""
+                          }
+                        },
+                        "required": [
+                          "path"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source"
+                ]
+              },
+              "minItems": 1,
+              "description": "catalog configures the corresponding chart or canonical service setting."
+            },
+            "served": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "description": "served configures the corresponding chart or canonical service setting."
+            },
+            "downloadSet": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "description": "downloadSet configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "models configures the corresponding chart or canonical service setting."
+        },
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string",
+              "anyOf": [
+                {
+                  "format": "ipv4"
+                },
+                {
+                  "format": "ipv6"
+                },
+                {
+                  "format": "hostname"
+                }
+              ],
+              "description": "host configures the canonical API listener address."
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "nativePort configures the corresponding chart or canonical service setting."
+            },
+            "backendUrl": {
+              "type": "string",
+              "description": "backendUrl configures the corresponding chart or canonical service setting."
+            },
+            "rateLimit": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "enabled configures the corresponding chart or canonical service setting."
+                },
+                "store": {
+                  "const": "memory",
+                  "description": "store configures the corresponding chart or canonical service setting."
+                },
+                "requestsPerSecond": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "requestsPerSecond configures the corresponding chart or canonical service setting."
+                },
+                "burst": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647,
+                  "description": "burst configures the corresponding chart or canonical service setting."
+                },
+                "idleSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647,
+                  "description": "idleSeconds configures the corresponding chart or canonical service setting."
+                }
+              },
+              "description": "rateLimit configures the corresponding chart or canonical service setting."
+            },
+            "clientIP": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "enum": [
+                    "direct",
+                    "x-forwarded-for"
+                  ],
+                  "description": "source configures the corresponding chart or canonical service setting."
+                },
+                "trustedProxyCIDRs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 128
+                  },
+                  "uniqueItems": true,
+                  "description": "trustedProxyCIDRs configures the corresponding chart or canonical service setting."
+                }
+              },
+              "description": "clientIP configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "api configures the corresponding chart or canonical service setting."
+        },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "nativePort configures the corresponding chart or canonical service setting."
+            },
+            "nativePort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "nativePort configures the corresponding chart or canonical service setting."
+            },
+            "gpuDevice": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "description": "gpuDevice configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "backend configures the corresponding chart or canonical service setting."
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cacheDir": {
+              "type": "string",
+              "pattern": "^/[^\\x00]+$",
+              "description": "cacheDir configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "storage configures the corresponding chart or canonical service setting."
+        },
+        "queue": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "waitingCapacity": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "description": "waitingCapacity configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "queue configures the corresponding chart or canonical service setting."
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "audioBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "description": "audioBytes configures the corresponding chart or canonical service setting."
+            },
+            "promptBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "promptBytes configures the corresponding chart or canonical service setting."
+            },
+            "decodedSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "decodedSeconds configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "limits configures the corresponding chart or canonical service setting."
+        },
+        "timeouts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operationSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "operationSeconds configures the corresponding chart or canonical service setting."
+            },
+            "cleanupSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "cleanupSeconds configures the corresponding chart or canonical service setting."
+            },
+            "shutdownSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "shutdownSeconds configures the corresponding chart or canonical service setting."
+            },
+            "provisioningSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "provisioningSeconds configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "timeouts configures the corresponding chart or canonical service setting."
+        },
+        "downloads": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "attempts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "attempts configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "downloads configures the corresponding chart or canonical service setting."
+        },
+        "logging": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ],
+              "description": "level configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "logging configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "config configures the corresponding chart or canonical service setting."
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "memory": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "ephemeral-storage": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                }
+              },
+              "description": "requests configures the corresponding chart or canonical service setting."
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "memory": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "ephemeral-storage": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                }
+              },
+              "description": "limits configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "resources configures the corresponding chart or canonical service setting."
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "nodeSelector configures the corresponding chart or canonical service setting."
+        },
+        "affinity": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.Affinity",
+          "description": "affinity uses the Kubernetes 1.35 API common baseline."
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.Toleration"
+          },
+          "description": "tolerations configures the corresponding chart or canonical service setting."
+        },
+        "runtimeClassName": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          ],
+          "description": "tlsSecretName configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "api configures the corresponding chart or canonical service setting."
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "memory": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "ephemeral-storage": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                }
+              },
+              "description": "requests configures the corresponding chart or canonical service setting."
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "memory": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                },
+                "ephemeral-storage": {
+                  "type": "string",
+                  "pattern": "^[0-9]+([.][0-9]+)?(m|Ki|Mi|Gi|Ti)?$",
+                  "description": "ephemeral-storage configures the corresponding chart or canonical service setting."
+                }
+              },
+              "description": "limits configures the corresponding chart or canonical service setting."
+            }
+          },
+          "description": "resources configures the corresponding chart or canonical service setting."
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "nodeSelector configures the corresponding chart or canonical service setting."
+        },
+        "affinity": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.Affinity",
+          "description": "affinity uses the Kubernetes 1.35 API common baseline."
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.Toleration"
+          },
+          "description": "tolerations configures the corresponding chart or canonical service setting."
+        },
+        "runtimeClassName": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          ],
+          "description": "runtimeClassName configures the corresponding chart or canonical service setting."
+        },
+        "gpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "requests configures the corresponding chart or canonical service setting."
+            },
+            "limits": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "limits configures the corresponding chart or canonical service setting."
+            }
+          },
+          "required": [
+            "requests",
+            "limits"
+          ],
+          "description": "gpu configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "backend configures the corresponding chart or canonical service setting."
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingClaim": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          ],
+          "description": "tlsSecretName configures the corresponding chart or canonical service setting."
+        },
+        "size": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*(Mi|Gi)$",
+          "description": "backend configures the corresponding chart or canonical service setting."
+        },
+        "storageClassName": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "storageClassName configures the corresponding chart or canonical service setting."
+        },
+        "accessModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ReadWriteOnce",
+              "ReadOnlyMany",
+              "ReadWriteMany"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "accessModes configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "cache configures the corresponding chart or canonical service setting."
+    },
+    "prepared": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingClaim": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          ],
+          "description": "tlsSecretName configures the corresponding chart or canonical service setting."
+        },
+        "accessModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ReadWriteOnce",
+              "ReadOnlyMany",
+              "ReadWriteMany"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "accessModes configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "prepared configures the corresponding chart or canonical service setting."
+    },
+    "transientStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*(Mi|Gi)$",
+          "description": "backend configures the corresponding chart or canonical service setting."
+        },
+        "backend": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*(Mi|Gi)$",
+          "description": "backend configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "transientStorage configures the corresponding chart or canonical service setting."
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "periodSeconds configures the corresponding chart or canonical service setting."
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "timeoutSeconds configures the corresponding chart or canonical service setting."
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "failureThreshold configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "probes configures the corresponding chart or canonical service setting."
+    },
+    "terminationGracePeriodSeconds": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
+      ],
+      "description": "terminationGracePeriodSeconds configures the corresponding chart or canonical service setting."
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "enabled configures the corresponding chart or canonical service setting."
+        },
+        "host": {
+          "type": "string",
+          "description": "host configures the corresponding chart or canonical service setting."
+        },
+        "className": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          ],
+          "description": "tlsSecretName configures the corresponding chart or canonical service setting."
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "annotations configures the corresponding chart or canonical service setting."
+        },
+        "tlsSecretName": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63
+            }
+          ],
+          "description": "tlsSecretName configures the corresponding chart or canonical service setting."
+        }
+      },
+      "description": "ingress configures the corresponding chart or canonical service setting."
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "io.k8s.api.core.v1.Affinity": {
+      "description": "Affinity is a group of affinity scheduling rules.",
+      "properties": {
+        "nodeAffinity": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.NodeAffinity",
+          "description": "Describes node affinity scheduling rules for the pod."
+        },
+        "podAffinity": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.PodAffinity",
+          "description": "Describes pod affinity scheduling rules (e.g. co-locate this pod in the same node, zone, etc. as some other pod(s))."
+        },
+        "podAntiAffinity": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.PodAntiAffinity",
+          "description": "Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod in the same node, zone, etc. as some other pod(s))."
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.NodeAffinity": {
+      "description": "Node affinity is a group of node affinity scheduling rules.",
+      "properties": {
+        "preferredDuringSchedulingIgnoredDuringExecution": {
+          "description": "The scheduler will prefer to schedule pods to nodes that satisfy the affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling affinity expressions, etc.), compute a sum by iterating through the elements of this field and adding \"weight\" to the sum if the node matches the corresponding matchExpressions; the node(s) with the highest sum are the most preferred.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.PreferredSchedulingTerm"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.NodeSelector",
+          "description": "If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to an update), the system may or may not try to eventually evict the pod from its node."
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.PreferredSchedulingTerm": {
+      "description": "An empty preferred scheduling term matches all objects with implicit weight 0 (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).",
+      "properties": {
+        "preference": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.NodeSelectorTerm",
+          "description": "A node selector term, associated with the corresponding weight."
+        },
+        "weight": {
+          "description": "Weight associated with matching the corresponding nodeSelectorTerm, in the range 1-100.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "weight",
+        "preference"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.NodeSelectorTerm": {
+      "description": "A null or empty node selector term matches no objects. The requirements of them are ANDed. The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.",
+      "properties": {
+        "matchExpressions": {
+          "description": "A list of node selector requirements by node's labels.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.NodeSelectorRequirement"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "matchFields": {
+          "description": "A list of node selector requirements by node's fields.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.NodeSelectorRequirement"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "type": "object",
+      "x-kubernetes-map-type": "atomic",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.NodeSelectorRequirement": {
+      "description": "A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.",
+      "properties": {
+        "key": {
+          "description": "The label key that the selector applies to.",
+          "type": "string"
+        },
+        "operator": {
+          "description": "Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.",
+          "type": "string"
+        },
+        "values": {
+          "description": "An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "required": [
+        "key",
+        "operator"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.NodeSelector": {
+      "description": "A node selector represents the union of the results of one or more label queries over a set of nodes; that is, it represents the OR of the selectors represented by the node selector terms.",
+      "properties": {
+        "nodeSelectorTerms": {
+          "description": "Required. A list of node selector terms. The terms are ORed.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.NodeSelectorTerm"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "required": [
+        "nodeSelectorTerms"
+      ],
+      "type": "object",
+      "x-kubernetes-map-type": "atomic",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.PodAffinity": {
+      "description": "Pod affinity is a group of inter pod affinity scheduling rules.",
+      "properties": {
+        "preferredDuringSchedulingIgnoredDuringExecution": {
+          "description": "The scheduler will prefer to schedule pods to nodes that satisfy the affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling affinity expressions, etc.), compute a sum by iterating through the elements of this field and adding \"weight\" to the sum if the node has pods which matches the corresponding podAffinityTerm; the node(s) with the highest sum are the most preferred.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.WeightedPodAffinityTerm"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "description": "If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to a pod label update), the system may or may not try to eventually evict the pod from its node. When there are multiple elements, the lists of nodes corresponding to each podAffinityTerm are intersected, i.e. all terms must be satisfied.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.PodAffinityTerm"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.WeightedPodAffinityTerm": {
+      "description": "The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)",
+      "properties": {
+        "podAffinityTerm": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.PodAffinityTerm",
+          "description": "Required. A pod affinity term, associated with the corresponding weight."
+        },
+        "weight": {
+          "description": "weight associated with matching the corresponding podAffinityTerm, in the range 1-100.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "weight",
+        "podAffinityTerm"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.PodAffinityTerm": {
+      "description": "Defines a set of pods (namely those matching the labelSelector relative to the given namespace(s)) that this pod should be co-located (affinity) or not co-located (anti-affinity) with, where co-located is defined as running on a node whose value of the label with key <topologyKey> matches that of any node on which a pod of the set of pods is running",
+      "properties": {
+        "labelSelector": {
+          "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
+          "description": "A label query over a set of resources, in this case pods. If it's null, this PodAffinityTerm matches with no Pods."
+        },
+        "matchLabelKeys": {
+          "description": "MatchLabelKeys is a set of pod label keys to select which pods will be taken into consideration. The keys are used to lookup values from the incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)` to select the group of existing pods which pods will be taken into consideration for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming pod labels will be ignored. The default value is empty. The same key is forbidden to exist in both matchLabelKeys and labelSelector. Also, matchLabelKeys cannot be set when labelSelector isn't set.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "mismatchLabelKeys": {
+          "description": "MismatchLabelKeys is a set of pod label keys to select which pods will be taken into consideration. The keys are used to lookup values from the incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)` to select the group of existing pods which pods will be taken into consideration for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming pod labels will be ignored. The default value is empty. The same key is forbidden to exist in both mismatchLabelKeys and labelSelector. Also, mismatchLabelKeys cannot be set when labelSelector isn't set.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "namespaceSelector": {
+          "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
+          "description": "A label query over the set of namespaces that the term applies to. The term is applied to the union of the namespaces selected by this field and the ones listed in the namespaces field. null selector and null or empty namespaces list means \"this pod's namespace\". An empty selector ({}) matches all namespaces."
+        },
+        "namespaces": {
+          "description": "namespaces specifies a static list of namespace names that the term applies to. The term is applied to the union of the namespaces listed in this field and the ones selected by namespaceSelector. null or empty namespaces list and null namespaceSelector means \"this pod's namespace\".",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "topologyKey": {
+          "description": "This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching the labelSelector in the specified namespaces, where co-located is defined as running on a node whose value of the label with key topologyKey matches that of any node on which any of the selected pods is running. Empty topologyKey is not allowed.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topologyKey"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector": {
+      "description": "A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects.",
+      "properties": {
+        "matchExpressions": {
+          "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorRequirement"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "matchLabels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is \"key\", the operator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
+          "type": "object"
+        }
+      },
+      "type": "object",
+      "x-kubernetes-map-type": "atomic",
+      "additionalProperties": false
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorRequirement": {
+      "description": "A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.",
+      "properties": {
+        "key": {
+          "description": "key is the label key that the selector applies to.",
+          "type": "string"
+        },
+        "operator": {
+          "description": "operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.",
+          "type": "string"
+        },
+        "values": {
+          "description": "values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "required": [
+        "key",
+        "operator"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.PodAntiAffinity": {
+      "description": "Pod anti affinity is a group of inter pod anti affinity scheduling rules.",
+      "properties": {
+        "preferredDuringSchedulingIgnoredDuringExecution": {
+          "description": "The scheduler will prefer to schedule pods to nodes that satisfy the anti-affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling anti-affinity expressions, etc.), compute a sum by iterating through the elements of this field and subtracting \"weight\" from the sum if the node has pods which matches the corresponding podAffinityTerm; the node(s) with the highest sum are the most preferred.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.WeightedPodAffinityTerm"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "description": "If the anti-affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the anti-affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to a pod label update), the system may or may not try to eventually evict the pod from its node. When there are multiple elements, the lists of nodes corresponding to each podAffinityTerm are intersected, i.e. all terms must be satisfied.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.PodAffinityTerm"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.api.core.v1.Toleration": {
+      "description": "The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.",
+      "properties": {
+        "effect": {
+          "description": "Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.",
+          "type": "string"
+        },
+        "operator": {
+          "description": "Operator represents a key's relationship to the value. Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category. Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).",
+          "type": "string"
+        },
+        "tolerationSeconds": {
+          "description": "TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "value": {
+          "description": "Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    }
+  },
+  "$comment": "Scheduling definitions derived from Kubernetes v1.35.0 api/openapi-spec/swagger.json (Apache-2.0), adapted by this project to reject unknown object fields. Source identity: tests/integration/testdata/chart-inputs.json."
+}

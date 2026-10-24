@@ -1,0 +1,92 @@
+[
+  {
+    "scanner": "gosec",
+    "rule": "G115",
+    "path": "internal/adapter/models/metadata.go",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "The native GGML header stores signed int32 fields. Decoding the little-endian bits as int32 is intentional; negative fields and invalid dimensions are rejected immediately before use.",
+    "evidence": "internal/adapter/models/metadata_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "gosec",
+    "rule": "G115",
+    "path": "internal/adapter/backend/inference.go",
+    "disposition": "false_positive",
+    "owner": "swimmwatch",
+    "rationale": "The RIFF size comparison cannot accept truncation: the same boolean expression requires size-8 <= MaxUint32. The caller rejects sizes below 46 and bounds the upload before validation.",
+    "evidence": "internal/adapter/backend/http_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "gosec",
+    "rule": "G115",
+    "path": "internal/adapter/audio/decoder.go",
+    "disposition": "false_positive",
+    "owner": "swimmwatch",
+    "rationale": "pcmOutput caps every write at maxData, which is at most MaxUint32-36. Its locked written counter is positive and even before conversion to the RIFF uint32 size.",
+    "evidence": "internal/adapter/audio/decoder_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "gosec",
+    "rule": "G204",
+    "path": "internal/adapter/audio/decoder.go",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "The executable and optional prefix arguments are operator configuration. Request audio is supplied through bounded stdin; decoder arguments are fixed and no shell or uploaded filename is executed. Cancellation kills and reaps the process group.",
+    "evidence": "internal/adapter/audio/decoder_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "gosec",
+    "rule": "G204",
+    "path": "internal/adapter/backend/process_linux.go",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "Both subprocess executables are operator-selected commands copied into typed supervisor options. Native/GPU arguments use fixed flags and validated startup values; no shell or client argument is used. The supervisor owns bounded process-group retirement.",
+    "evidence": "internal/adapter/backend/supervisor_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "gosec",
+    "rule": "G118",
+    "path": "cmd/api/main.go",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "The goroutine owns process shutdown after the serving context has ended. A fresh background-derived context intentionally permits graceful drain; both HTTP shutdown and its wait are bounded by the configured drain/cleanup budgets.",
+    "evidence": "cmd/api/lifecycle_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "gosec",
+    "rule": "G304",
+    "path": "internal/adapter/models/cache_linux.go",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "The unrooted branch opens only an operator-configured prepared-model path, never a client-supplied filename. Downloaded cache paths use os.Root with O_NOFOLLOW. Both branches verify the opened descriptor is a regular file; provisioning verifies its configured SHA256.",
+    "evidence": "internal/adapter/models/provision_test.go",
+    "expires": "2026-11-22"
+  },
+  {
+    "scanner": "trivy",
+    "rule": "GHSA-cxf3-9h37-7rr8",
+    "path": "github.com/labstack/echo/v5",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "The advisory concerns Echo Proxy WebSocket middleware. Resident V1 uses explicit HTTP handlers and its own bounded http.Client transport; Echo Proxy is not referenced or linked into either entrypoint. The mandatory compiled-symbol scope test checks both exact Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. Echo v5.4.0 remains the approved core pin; this is exact non-applicability, not an accepted-risk waiver.",
+    "evidence": "tests/tooling/test_echo_security_scope.py",
+    "expires": "2026-10-31"
+  },
+  {
+    "scanner": "trivy",
+    "rule": "GHSA-9969-6676-49h5",
+    "path": "github.com/labstack/echo/v5",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "The advisory concerns Echo Proxy WebSocket middleware. Resident V1 uses explicit HTTP handlers and its own bounded http.Client transport; Echo Proxy is not referenced or linked into either entrypoint. The mandatory compiled-symbol scope test checks both exact Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. Echo v5.4.0 remains the approved core pin; this is exact non-applicability, not an accepted-risk waiver.",
+    "evidence": "tests/tooling/test_echo_security_scope.py",
+    "expires": "2026-10-31"
+  }
+]

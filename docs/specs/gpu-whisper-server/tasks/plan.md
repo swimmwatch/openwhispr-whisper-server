@@ -1,26 +1,53 @@
 # Resident V1 implementation plan
 
-Status: planning complete; I01/I02/I03 complete on 2026-10-11. C01 local implementation/checks passed; hosted CI and required-check settings remain pending. Runtime implementation not started.
+Status: I01/I02/I03/C01/F01/P01/P02/P03/P04/P05/P06 are complete (2026-10-23). P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go 1.27.3 tests/race/vet and fifteen PROVE mutations. Full CI/security, artifact publication, real cluster/GPU/CNI acceptance and final documentation remain unexecuted. The remaining six packets retain their technical agreements and require separate execution.
 Depth: Deep. Profiles: core, backend, operations, security.
-Current authorization: C01 only, through the explicit incremental invocation after I03. Scoped workflow/settings writes and CI execution are covered; commit/push require the packet's separate explicit authorization. Finish C01 before stopping; do not execute F01 or later packets. No artifact publication or deployment is authorized.
+
+Planning history: four actual synchronous Request User Input answers accepted P02/P03/P04, P05/P06, C02/R01/R02 and P07/P08/P09. Every packet has its own managed proposal/reference/digest and checked ready binding. Completed packets are preserved; no historical answer was fabricated. Technical readiness does not satisfy dependencies or authorize implementation, commit, push, publication, deployment or a new review.
+
+## Current validation policy
+
+On 2026-10-24 the user retired the custom repository-file checkers and their
+tests: `check_contracts.py`, `check_agents.py`, `check_go_architecture.py` and
+`ci_actions.py`. Their earlier command references and recorded results below and
+in completed packet notes are historical; those checks are no longer required,
+not newly passed. Do not restore them or introduce replacement file validators.
+Use the existing compiler/linters and tests that execute project behavior, as
+specified in [AGENTS.md](../../../../AGENTS.md#test-behavior-not-repository-files).
 
 ## Reviewed inputs and readiness
 
-- source_version: `626342ee71f5181542a95897369aa7cfa0c2982a7e3a9e599df437e5f3b7df90`
-- specification_version: `25616a15c355593138f32986719f830ca2ce2fac6cf1e9e1a2c03209fdd33c02`
-- review_ref: `8af11f7b-6523-4d43-926e-bf5ff1d3d1b2`
-- Source: [spec.md](../spec.md), Approved, 31 requirements. Fresh full independent review covers all 91 items, including the Codex project-only amendment and final whole-specification consistency. The author approval transition is checkpointed through workflow MCP.
+- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
+- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
+- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
+- Source: [spec.md](../spec.md), Approved, 31 requirements. Fresh full independent review covers all 93 items, including the explicit Go 1.27.3 amendment and final whole-specification consistency. The author approval transition is checkpointed through workflow MCP.
 - Scope proposal revision 8 remains explicitly confirmed: Deep/core/backend/operations/security, the same three artifact names and per-IP replaceable in-memory storage. The user explicitly added protocol-neutral service errors and HTTP-only adaptation. No additional protocol, package, profile or pending user decision is introduced. Fresh full review passed before author-made Approved state.
 - Confirmed manifest: core/contracts.yaml, contracts/openapi.yaml, quality/scenarios.yaml. Query manifest/decisions through workflow MCP; never parse or hand-edit them.
-- [Core configuration/lifecycle contract](../core/contracts.yaml), [public OpenAPI](../contracts/openapi.yaml), [quality scenarios](../quality/scenarios.yaml) are consistent planning contracts; their runtime behavior has not been implemented.
+- [Core configuration/lifecycle contract](../core/contracts.yaml), [public OpenAPI](../contracts/openapi.yaml), [quality scenarios](../quality/scenarios.yaml) are consistent planning contracts. F01 foundation and P01 model preparation exist; end-to-end runtime behavior remains unverified.
 
 Before each explicit packet invocation, reopen workflow state, verify confirmed scope and the pinned Approved specification/review, and read exact linked requirements through MCP. Recheck the aggregate source version before completion. Source drift returns affected work to specification/planning. I01 owns local bootstrap; later packets require a usable Git worktree and passing prerequisites.
 
+## P01 technical readiness
+
+P01 is complete with its original accepted proposal and evidence in
+[P01](01_configuration_models.md#technical-proposal). Its original agreement
+`{id: 3ade1343-9827-4eb4-9493-1472641cd19c, revision: 2}` and digest
+`f23b7a0f0aac9d97f42e2ae9b0d1231c7acdd76c5cdc94f25f8112f7db6a89ac`
+remain unchanged. It is not reopened or migrated by this repair.
+
+All 11 unexecuted packets now have explicit technical proposals and individual
+ready agreement bindings, listed in [the inventory](#remaining-packet-agreement-inventory).
+The earlier P02 needs_agreement / ANSWER_REQUIRED result is resolved by the actual
+new P02 answer, not by reusing P01. Recheck each exact binding and specification
+before/after its own incremental invocation. Ready means agreed design; unfinished
+dependencies, unavailable hardware/tools or missing external authority still
+prevent that packet's execution or completion.
+
 ## Evidence and constraints
 
-I01/I02/I03 are complete: the local Git worktree, Go module, exclusion/tool metadata, community files, scoped public repository/channel setup, Codex project rules/skills/checker and private Home Lab preparation exist. See the current [handoff](handoff.md) and [agent setup](../../../agent-setup.md) for checks and limits. No runtime code, application tests, Dockerfiles, Compose file, chart or published release artifacts exist. Target root has no .codegraph directory; recheck before code lookup during execution. No remaining packet is executed or repository/registry setting changed by I03 completion.
+I01/I02/I03 are complete: the local Git worktree, Go module, exclusion/tool metadata, community files, scoped public repository/channel setup, Codex project rules/skills/checker and private Home Lab preparation exist. See the current [handoff](handoff.md) and [agent setup](../../../agent-setup.md) for checks and limits. F01 foundation and P01 config/fingerprint/model-adapter packages and behavior tests exist; runtime commands/transcription, Dockerfiles, Compose file, chart and published release artifacts remain unimplemented. Target root has no .codegraph directory; recheck before code lookup during execution. No remaining packet is executed or repository/registry setting changed by I03 completion.
 
-Settled choices: Go + Echo, separate API/backend Pods, one fixed Resident model, unchanged C++ HTTP server, two images and one chart. Use Go 1.26.5 baseline and Echo v5.4.0 (requires Go >=1.25); the local Go/Helm observation does not establish container or cluster compatibility. Decode in the API with FFmpeg 9.0.2, CUDA 12.8 baseline for the native image. Resolve actual immutable toolchain/base-image/source identities in P05; never invent digests.
+Settled choices: Go + Echo, separate API/backend Pods, one fixed Resident model, unchanged C++ HTTP server, two images and one chart. Use Go 1.27.3 baseline and Echo v5.4.0 (requires Go >=1.25); the local Go/Helm observation does not establish container or cluster compatibility. Decode in the API with FFmpeg 9.0.2, CUDA 12.8 baseline for the native image. Resolve actual immutable toolchain/base-image/source identities in P05; never invent digests.
 
 Verified primary evidence:
 
@@ -189,7 +216,7 @@ The package/default/identity authority is core/contracts.yaml go_foundation/obse
 | Rate limit | [Echo v5.4.0 RateLimiterStore](https://github.com/labstack/echo/blob/v5.4.0/middleware/rate_limiter.go) and its memory store | Existing replaceable store interface; TTL/burst/rate, 429 versus store-error 503; no Redis implementation in V1 |
 | Client IP | [Echo v5.4.0 IP extractors](https://github.com/labstack/echo/blob/v5.4.0/ip.go) with net/netip normalization | Direct by default; explicitly trusted XFF CIDRs only, all implicit trust disabled |
 | Config | [Koanf v2.3.8](https://github.com/knadh/koanf/releases/tag/v2.3.8) with providers and standard flag parsing | Explicit flag presence, strict source validation/duplicate JSON precheck and collection replacement; no hot reload; verify provider versions |
-| Validation | [validator/v10 v10.30.5](https://github.com/go-playground/validator/releases/tag/v10.30.5) | WithRequiredStructEnabled on startup DTOs; library requires Go >=1.26.0, satisfied by 1.26.5 baseline; domain/audio semantic rules remain explicit |
+| Validation | [validator/v10 v10.30.5](https://github.com/go-playground/validator/releases/tag/v10.30.5) | WithRequiredStructEnabled on startup DTOs; library requires Go >=1.26.0, satisfied by 1.27.3 baseline; domain/audio semantic rules remain explicit |
 | Errors | [standard Go errors](https://pkg.go.dev/errors) and [wrapping guidance](https://go.dev/blog/go1.13-errors) | Small typed semantic failure and Error/Unwrap; errors.Is/As and %w preserve identity; HTTP metadata belongs only to the HTTP adapter |
 
 Context7 supplied Koanf v2.3.7 layering examples; current v2.3.8 source/release closes that version gap. Available Echo Context7 documentation was v4, so v5 behavior was checked in pinned primary source. Koanf StrictMerge is not duplicate/unknown-key validation, Echo RequestID alone accepts arbitrary IDs, and default request/panic logging can expose unsafe values: thin integration must enforce the spec. Verify actual compatible module graph/checksums/licenses/security at F01; nothing is installed during planning.
@@ -292,13 +319,13 @@ All paths/symbols below are proposed, not existing code.
 | U-DOMAIN | internal/domain: ModelID, TranscriptionRequest, Result, Failure | Owned plain data and business invariants; no I/O/framework state | Domain leaf; REQ-031; Q-GOFOUNDATION |
 | U-ERRORS | internal/domain Failure/FailureKind; internal/adapter/httpapi MapFailure/HTTPFailure | Semantic typed/wrapped failure -> HTTP status and safe existing envelope/header at the adapter; unknown fallback and response ownership | Domain leaf plus standard errors and HTTP-only adapter; REQ-013/019/029/031; Q-ERRORS |
 | U-OBSERVABILITY | internal/platform/logging and HTTP middleware hooks | Validated severity/safe events and request ID -> JSON stdout/context/header; startup to shutdown | slog/Echo callbacks; REQ-019/029; Q-OBSERVABILITY |
-| U-ADMISSION | internal/adapter/httpapi/ratelimit | Trusted canonical client IP + injected Echo store -> admit or safe 429/503 before body work | Existing Echo store interface/memory backend; REQ-030/031; Q-RATELIMIT |
+| U-ADMISSION | internal/adapter/httpapi middleware/store wiring | Trusted canonical client IP + injected Echo store -> admit or safe 429/503 before body work | Existing Echo store interface/memory backend; REQ-030/031; Q-RATELIMIT |
 | U-CONFIG | internal/platform/config: Load, Validate, CanonicalFingerprint | Layered typed config -> immutable validated startup settings; strict source/type/collection/deferred checks | Koanf/validator + strict integration; REQ-003/006/008/021/031; Q-CONFIG/GOFOUNDATION |
 | U-MODELS | internal/adapter/models: Provision, ReadMetadata | Catalog/download/prepared sources -> verified path/capability; lock/partial/atomic publish; absolute provisioning failure | Config, filesystem, HTTPS; REQ-004/005/006; Q-CACHE |
-| U-SUPERVISOR | cmd/backend, internal/adapter/backend: Supervisor.Run, ServeInference, StopAndReap | Verified artifact -> native process/model; private HTTP health/inference; cancellation/recovery generation; suppress raw output | Config/models, os/exec, net/http; REQ-006/007/008/011/013/014/017/019; Q-STARTUP/CANCEL/FAILURE |
+| U-SUPERVISOR | cmd/backend, internal/adapter/backend: Supervisor.Run, Health, Infer, Shutdown | Verified artifact -> native process/model; private HTTP health/inference; cancellation/recovery generation; suppress raw output | Config/models, os/exec, net/http; REQ-006/007/008/011/013/014/017/019; Q-STARTUP/CANCEL/FAILURE |
 | U-INPUT | internal/adapter/audio, internal/adapter/httpapi: ReadMultipart, Normalize, ValidateFields | Capped multipart -> owned typed request/canonical WAV; one bounded decoder, streaming sample count; cleanup on every path | Config, FFmpeg subprocess; REQ-012/019; Q-INPUT/BOUNDS/PRIVACY |
 | U-UPSTREAM | internal/adapter/upstream: Health, Infer | Typed request/deadline/generation -> transcript or typed safe failure; allowlist fields, bounded reply, no submitted-work retry | net/http, owned request; REQ-006/011/013/014; Q-ISOLATION/FAILURE |
-| U-SERVICE | internal/application/transcription: Admit, Shutdown; cmd/api constructor wiring | Valid owned request -> FIFO result; one active +16 waiting; no Echo Context in queue; liveness/readiness/shutdown | Domain/consumer ports and standard library only; REQ-007/011–014/017–019/029/031; Q-FIFO/CANCEL/HEALTH/OBSERVABILITY |
+| U-SERVICE | internal/application/transcription: Normalizer/InferenceBackend contracts (P03), NewService/Admit/Readiness/Shutdown and cmd/api assembly (P04) | Valid owned request -> FIFO result; one active +16 waiting; no Echo Context in queue; liveness/readiness/shutdown | Domain/consumer ports and standard library only; REQ-007/011–014/017–019/029/031; Q-FIFO/CANCEL/HEALTH/OBSERVABILITY |
 | U-PACKAGING | containers, deploy/compose.yaml, deploy/compose.env.example | Immutable source/config -> two Linux amd64 images and reusable Compose inputs; GPU-free build, UID/mount/signal/private-network contracts | Both binaries/native/decoder; REQ-001/002/015; Q-PACKAGING |
 | U-CHART | charts/whisper-server | Valid values -> paired StatefulSets/Services/policies/claims/probes; no surge, retain cache | Packaging/config; REQ-003/016/017/019; Q-CHART/PAIRING/ROLLOUT |
 | U-ACCEPTANCE | tests/acceptance and safe evidence reports | Public audio + identified target -> actual GPU, lifecycle/privacy/performance evidence | All units; REQ-002/018/020; real scenarios |
@@ -435,3 +462,62 @@ Each packet is a separate explicit invocation. Write/run tests or discriminating
 
 Commands in packets describe tests/checks to create unless explicitly marked existing. Run from the project root, prefix shell with rtk, preserve unrelated work, update only [todo.md](todo.md) and current [handoff.md](handoff.md), and stop after the invoked packet. No install, implementation, commit, publishing or deployment was performed by this plan.
 
+## Shared technical commitments
+
+Use the approved Resident V1 behavior without changing scope, defaults, native sources or the three profile contracts. Binding source selectors are ../core/contracts.yaml runtime, go_foundation, observability, rate_limit, configuration, models, private_backend, deployment and delivery; ../contracts/openapi.yaml paths/components/x-error-registry/x-absent-routes; ../quality/scenarios.yaml environments/observation/scenarios. Each packet narrows these selectors in its own proposal. Requirement definitions are pinned to source_version 2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9, specification_version 6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939, review a2b606b5-12d9-4c9e-a805-86f889709220. Reconcile material referenced-contract drift; a ready binding is not permission to change behavior.
+
+Reuse Go 1.27.3, Echo 5.4.0, Koanf 2.3.8, validator 10.30.5, standard slog/context/HTTP/process facilities and already-approved x/sys; no new service dependency or speculative abstraction is selected here. Existing evidence: go.mod:3-15; config.Load at internal/platform/config/load.go:17, CanonicalFingerprint at fingerprint.go:11, Models.Validate at settings.go:124; models.Provision at internal/adapter/models/provision.go:28; protocol-neutral Failure at internal/domain/failure.go:21; HTTP Install at internal/adapter/httpapi/middleware.go and MapFailure at errors.go. Reverify symbols before implementation. Current cmd/api, cmd/backend, Docker/Compose/chart/release harnesses do not exist; names below are proposals, not passing runtime evidence. The root has no .codegraph index at planning time.
+
+Commands assemble validated options. Domain owns plain semantic types/errors, application owns consumed ports/use cases, adapters own transport/files/processes and platform owns setup. No HTTP metadata or config/framework/adapter imports in domain/application. Preserve request correlation, safe logging, existing rate-limit store and mapped failures. Never claim a library replacement or add generic frameworks from this plan.
+
+Every remaining packet is individually invoked. Create and run discriminating checks before implementation; record RED/GREEN and required single reversible PROVE mutations, then restore and run focused/final checks. Missing symbols, tools or hardware do not prove behavioral RED or acceptance. Temporary probes/scripts stay ignored under .local; durable harnesses must own an agreed repeated check. Run from repository root through rtk, select the pinned compiler explicitly and use GOTOOLCHAIN=local/GOWORK=off; prepared Python tools are local prerequisites, never application dependencies.
+
+Preserve completed I01/I02/I03/C01/F01/P01 and unrelated dirty work. No clean tree, commit, optional review or publication is a prerequisite for subsequent local work. Manual release/cluster boundaries remain: no publication, credentials/settings write, target deployment or infrastructure change is authorized by planning agreement. Do not fabricate immutable versions/digests, tool availability, GPU results, secrets or user answers. Hardware/security/runtime checks remain required in their owning packets. Only explicit later implementation invocations and existing target-specific authority may execute them.
+
+## Remaining packet agreement inventory
+
+| Packet | Proposal | Exact agreement reference | Proposal digest | Technical state |
+| --- | --- | --- | --- | --- |
+| [P02](02_backend_supervisor.md#technical-agreement) | `p02-resident-supervisor-v1` | `94e10aa1-7886-444d-9a00-430d59b6c6c1@4` | `fbeebbf6f0b5fa5a652394e45725d9e535ba7c3fa47833b0166ed74f3aa99961` | ready; local implementation complete |
+| [P03](03_http_audio_adapter.md#technical-agreement) | `p03-http-audio-ports-v1` | `94e10aa1-7886-444d-9a00-430d59b6c6c1@4` | `d7446921538e3abd4b907e6649040c80fe9ff57255f6d461d741227ac8d0a50e` | ready; local implementation complete |
+| [P04](04_queue_health_lifecycle.md#technical-agreement) | `p04-fifo-lifecycle-v1` | `94e10aa1-7886-444d-9a00-430d59b6c6c1@4` | `49e2f67b9d5747784403fa2156ebc3c734571818616101024c6b17061bbd32ef` | ready; local implementation complete |
+| [P05](05_images_standalone.md#technical-agreement) | `p05-images-compose-v1` | `885e513d-7ef8-4025-94e9-e772d3b35472@4` | `a62f3277128cee4446eb561cfb74f75c15c5f8f8221fc34c81e3a26ae11aa6d6` | complete: local GPU-free images/Compose, including configured-port correction; GPU/release checks deferred to owning packets |
+| [P06](06_helm_chart.md#technical-agreement) | `p06-ordinal-chart-v1` | `885e513d-7ef8-4025-94e9-e772d3b35472@4` | `905295279131a4ada4ca21a0ee769c99d46a45c43579a2b3d76a56eec02420e1` | complete: local chart/schema/parity/package acceptance; actual cluster/GPU/CNI checks remain P08 |
+| [C02](ci_02_build_release_pipeline.md#technical-agreement) | `c02-security-release-ci-v1` | `19d3f11e-13ba-4c7a-b727-511a0c24a7d2@4` | `69e40c92067aa82a6b08edf9ee285ac8ccb2da5d9f49919e96661ced8f917633` | ready; not executed |
+| [R01](release_01_prerelease.md#technical-agreement) | `r01-immutable-candidate-v1` | `19d3f11e-13ba-4c7a-b727-511a0c24a7d2@4` | `7823ded89bba909fb9da863071a0da3784104e9a2cd40a0f9704c33262af0ad0` | ready; not executed |
+| [R02](release_02_stable.md#technical-agreement) | `r02-qualified-promotion-v1` | `19d3f11e-13ba-4c7a-b727-511a0c24a7d2@4` | `bbb43fdeeefe76a806b62c75d8e9beca1cc67596a017d883130969e3f856edec` | ready; not executed |
+| [P07](07_docker_gpu_acceptance.md#technical-agreement) | `p07-docker-gpu-evidence-v1` | `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4` | `a91beca407917e6c1206f99d93223f0d72452634c9da1fe53f0efeb0a418b31e` | ready; not executed |
+| [P08](08_homelab_gpu_acceptance.md#technical-agreement) | `p08-homelab-gpu-evidence-v1` | `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4` | `73141b2225d0865a53871cc9b07d3af9da72d5e035ce15de2284c9f78cfaab51` | ready; not executed |
+| [P09](09_documentation.md#technical-agreement) | `p09-verified-documentation-v1` | `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4` | `3f6434557b48af344ceddbd911194ece72e5044d9757c11319783be320885625` | ready; not executed |
+
+All 11 exact bindings were checked ready with no issues; final checks revalidate them and completed P01 separately. Revision 4 preserves actual native answers after correcting only the existing middleware name Install. No unexecuted checkbox is complete. External tools/bases/digests/hardware/access remain execution prerequisites, not planning facts.
+
+## Planning repair verification — 2026-10-22
+
+The matching planning manual verifier exited 0. Scenario MCP confirmed the existing
+Deep/core/backend/operations/security scope and unchanged three planning artifacts.
+All 31 requirement definitions and continuations were read at the pinned reviewed
+version. Final specification_check_state returned pass / Approved / reviewed,
+checkpoint recorded and approval_checkpoint_written=false. No new review or
+approval checkpoint was created by this planning repair.
+
+Four actual synchronous native answers accepted every remaining packet. Final
+planning_packet_check calls returned ready/no issues for all 11 exact current
+bindings and separately for the unchanged completed P01 binding. Current technical
+history has five answered records and no unresolved proposal in these groups.
+Revision 4 records an evidence-only Install symbol correction with the original
+actual answer/source; no new consent was invented or represented as a fresh reply.
+
+The temporary .local/planning-all/check_plan.py passed exact frozen proposal/shared
+text, metadata/reference/stages, 31 requirement references, local links, unchanged
+P01 proposal and checklist preservation checks. Its first run exposed a missing
+explicit GREEN instruction in a packet's execution guide; the guide was corrected
+and the check then passed. tools/check_contracts.py passed on actual saved profile
+contracts, and scoped git diff --check passed. Temporary helpers/results stay
+ignored; they are not project prerequisites. No workflow-state file was read through
+a shell or edited outside the scenario MCP.
+
+No implementation, Go behavior test, scanner/image/chart/GPU/hosted CI execution,
+commit/push, external publication or deployment occurred. Six completed checklist
+items stay complete; all 11 unexecuted items stay unchecked. P02 is next after a
+new explicit incremental invocation and fresh source/agreement/prerequisite check.

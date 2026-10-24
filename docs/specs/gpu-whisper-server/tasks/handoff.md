@@ -1,123 +1,106 @@
 # Current handoff
 
-Stage: **C01 local implementation verified; required hosted acceptance pending
-(2026-10-11)**. I01/I02/I03 remain complete. C01 remains unchecked.
+Packet: **C02 — local checks pass, required remote qualification incomplete
+(2026-10-24)**. Baseline I01/I02/I03/C01/F01/P01–P06 is complete.
+C02 stays unchecked; R01 is not eligible. No commit, push, publication, deployment,
+external settings or global agent changes were performed.
 
-## Authorization and required next step
+## Verified workflow inputs
 
-The user invoked incremental-implementation/context-scouting after I03 and its
-documentation refinement. This invocation covers C01 only. The packet's manual
-gate reserves commits and test-branch pushes for explicit authorization. The user explicitly authorized the initial public source commit/push and test PR
-with `ok`. No remote mutation has yet been performed.
+- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
+- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
+- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
+- Proposal: `c02-security-release-ci-v2`.
+- agreement_ref: `{id: 0707c637-98d3-4781-bc32-f86d5ba105b6, revision: 2}`.
+- proposal_digest: `582e82cbffbf7364569716554a5cc603dc22c3a2dad1fc98db89b5a3e423b6be`.
+- Matching manual/Git preflight passed. Specification is Approved/reviewed.
+  The frozen technical proposal is preserved. Final checks returned specification
+  `pass` and exact v2 agreement `ready`, with no issues.
 
-The verified public repository is swimmwatch/openwhispr-whisper-server, with
-Actions enabled and usable scoped administration rights. Its main branch API
-returned 404 before initial source publication. Existing active main protection
-(id 24875239) retains deletion/non-fast-forward protection and a PR requirement.
-No settings were weakened; no required check name was added before a real pass.
+The user selected a separate inventory metadata commit. Artifact revisions name
+already successful trusted main CI runs. Only the chosen inventory file may
+differ in the approval checkout. Candidate image provenance is never rewritten.
 
-Next action: with the user's explicit authorization, the C01 implementer publishes only reviewed public
-files, runs trusted and fork-safe hosted CI plus a deliberate failed-check case,
-records exact SHAs/run URLs/conclusions, then adds and reads back the successfully
-observed required check. Preserve existing protections; address any actual push
-restriction through scoped authorization instead of silently disabling it.
-The implementer owns those authorized CI actions.
+## Implemented and checked locally
 
-## Changes and actual check commands
+Trusted CI/security verification, immutable image/chart publication, index
+preservation, explicit Pages deployment and selected-image stable promotion are
+wired. Stable uses accepted image manifests and the current stable chart;
+actual five-profile Helm equivalence denies runtime changes.
 
-- .github/workflows/ci.yml: pull_request and main push, hosted ubuntu-24.04,
-  bounded Bootstrap checks job, job-level contents read only, checkout without
-  persisted credentials, no caches/secrets/publishing. Third-party actions use
-  reviewed full SHAs. Downloads verify published archive SHA256 before extracting
-  only the requested executable.
-- tools/check_contracts.py: strict YAML with duplicate/anchor/alias/tag rejection
-  and correct on-key parsing, requirement/scenario/packet/environment links,
-  checksum-pinned official OpenAPI schema validation and internal references,
-  effective workflow permissions/triggers/actions/failure policy, required command
-  wiring, secret-rule configuration, current settings/documentation/exclusions.
-  It never parses MCP-owned workflow state or substitutes approval verification.
-- tools/security/check_secrets.py and trivy-secret.yaml: pinned Trivy secret-only
-  scan including Markdown, explicit private/Git/MCP exclusions, captured raw
-  output and private temporary reports. Only counts/tool/rule/time/source metadata
-  are emitted; matches, paths, titles and code are not public output. Findings
-  block even with exit 0; unsupported/missing/error reports fail closed.
-- tests/tooling/test_contracts.py and test_secrets.py: 16 tests, including real
-  pinned-scanner marker detection, exclusions and safe report/exit handling.
-- tools/requirements-ci.txt: seven exact Linux amd64/CPython 3.12 wheel versions
-  with verified PyPI hashes; tools/versions.yaml records current CI/action/schema/
-  scanner identities and distinguishes initial metadata from actual C01 coverage.
-- tools/schemas/openapi-3.0.json: unchanged official 2024-10-18 schema for OpenAPI
-  3.0, SHA256 2385f5bbb8c37878daae73baeabe7f34b2f022a4a8c049329ee61f71796f039c.
-  Upstream Apache-2.0 license and source attribution retained beside it.
-- Dependabot additionally covers GitHub Actions and the permanent tooling lock.
-  C01/plan/checklist/handoff record local readiness and the pending hosted gates.
+Alias publication snapshots previous identities before writes, performs exact
+read-backs and restores existing aliases on failure. An immutable pre-write
+artifact survives runner loss; same-run retries restore it by ID. Conservative
+rollback includes remote writes lost before progress upload. New aliases without
+a previous value remain explicit partial state; immutable manifests are never
+deleted to conceal failure. Changed retry inputs and arbitrary conditional CI
+bypasses are rejected. See [release operations](../../../releases.md).
 
-From the project root, with installed hash-locked Python check dependencies and
-verified actionlint/Trivy executables:
+Current backend GnuPG/OpenSSL package findings are remediated. Native review is
+bound to actual build inputs and reverified primary-source hashes. All 22 targets
+pass with no blocking findings or coverage gaps. Three applicable MEDIUM findings
+remain visible: FFmpeg CVE-2026-107676/CVE-2026-107678 and whisper.cpp
+CVE-2026-17513. Two exact Echo Proxy exceptions are supported by both binaries'
+linked-symbol tests plus a positive Proxy fixture. Echo remains v5.4.0.
 
-```sh
-rtk proxy python3 tools/check_contracts.py
-rtk proxy python3 tools/check_agents.py
-rtk proxy python3 -m unittest discover -s tests/tooling -v
-rtk proxy actionlint .github/workflows/ci.yml
-rtk proxy env GOTOOLCHAIN=local GOWORK=off go mod download
-rtk proxy env GOTOOLCHAIN=local GOWORK=off go mod verify
-rtk proxy python3 tools/security/check_secrets.py
-```
+## Actual current local evidence
 
-Actual local validation used a fresh .local/c01/venv, the permanent hash lock and
-checksum-verified .local/c01/bin tools. These local installation paths are not CI
-prerequisites; hosted CI installs from the tracked lock/identity manifest into its
-own environment. C01_TRIVY_BINARY supplies a verified executable to fixture tests
-when it is not on PATH.
+Pinned Go 1.27.3 and private Python/tool installations were used.
 
-## Verification evidence and limits
+- Tooling: 100 tests, no skips, including actual scanner and disposable publisher
+  fixtures (`.local/workflow-optimization/tooling.log`).
+- Source: `go test -race -coverprofile=... ./cmd/... ./internal/...` passed.
+  This invocation's command/internal statement coverage is 90.9%; it is not a
+  task-wide or GPU coverage claim (`go-final.log`, `coverage-final.log`).
+- Images/Compose/Helm: `go test -race ./tests/integration -count=1 -timeout=15m -v`
+  with P05/P06 flags and the current images passed in 372.625s
+  (`runtime-final.log`). The earlier unsupported FFmpeg `-parsers` harness
+  failure was corrected with an actual libavcodec parser registry probe.
+  The current profile is GREEN; the old API image is semantic RED.
+- Format/vet/module verification, architecture, contracts, agent setup,
+  actionlint, Hadolint, current-source secrets and the complete security CLI pass.
+- Seven isolated in-memory guard mutations were detected without harness errors
+  or source mutation (`prove-remaining.log`). The missing pre-write workflow
+  snapshot was semantic RED and is now GREEN.
+- Post-edit contracts/agents/actionlint/current-source secrets and the complete
+  security CLI pass. Scoped tracked/untracked whitespace checks pass.
+- Private logs/scripts are in `.local/c02/resume/` (mode 0700).
+  They are excluded from source/image/security artifacts.
 
-- Matching engineering-manual verifier: exit 0; separate Git-worktree check:
-  true; staged diff empty. Existing and new public files remain untracked.
-- Fresh Approved/reviewed specification check passed before work and at checkpoint.
-- Tests were written first. Initial RED was a missing-module/import failure,
-  not semantic proof. GREEN followed implementation and two observed corrections:
-  a YAML plain scalar containing a colon was changed to a block scalar, and the
-  scanner parser was corrected for Trivy's real empty-filesystem report that omits
-  Results. A permission detector's false match on check_secrets.py was also fixed;
-  actual secret-context access still fails.
-- PROVE: six independent in-process mutations produced intended assertion
-  failures for ignored job permissions, unknown requirement refs, duplicate YAML,
-  exit-zero findings, public raw matches and private-directory scanning. Mutations
-  were restored; real production files were never broken.
-- Fresh Python environment installed the permanent --require-hashes lock; pip
-  check passed. All 16 tooling tests passed, including two actual Trivy scans.
-- Public contract/bootstrap checks, agent checks and actionlint syntax: exit 0.
-  Local ShellCheck is unavailable; no ShellCheck pass is claimed.
-- Go module download/verify: exit 0; no external Go dependencies/packages exist.
-  No placeholder application-test pass or full Security Check is claimed.
-- Real current-source Trivy 0.75.0 secret scan: exit 0, zero findings. Executable
-  SHA256 93f9da8e4ba5e0c1c76d8234ed2494cf9afb0a96fd21953e424bb795f3299b8e;
-  secret-config SHA256 1ca45873ff134fddd96ff540386f280777fb429b2c328349d9614bb3a8e91c82.
-  Evidence is local-uncommitted, not a qualified remote source SHA.
-- actionlint 1.7.12 and Trivy 0.75.0 archives matched publisher checksum files;
-  actual tool versions were exercised. Three v7 action commits were checked against
-  upstream refs/source. Hosted action/runner compatibility remains unverified.
-- Required trusted/fork hosted runs, deliberate failed required job and required
-  check read-back are not performed: hosted execution is pending; commit/push authority is granted. There are
-  no run URLs/source SHAs to report. These are incomplete requirements, not passes.
+Current artifacts are `.local/c02/current-artifacts/`:
 
-## Reviewed specification inputs
+- API: `sha256:f499a34b2ee4f5c5a33ffe181d335d9f8157f78d0ce1f2bfb0f655442bbbbb24`.
+- Backend: `sha256:797f5db62d423cab41169da42b885232994a4d8bc60f602281188dd7418670b2`.
+- Chart archive: `2bbeab744544aa60f5cdf808920b7a65917154db223fd4b30cbaa7b587129ec0`.
+- Both images retain actual SBOM/provenance and verified OCI identities.
+  They are cached local builds (`cold=false`) from a dirty checkout. Their
+  source labels do not prove those bytes exist in the labeled Git commit.
+  Earlier cold exports remain historical, not current clean qualification.
 
-- source_version: `626342ee71f5181542a95897369aa7cfa0c2982a7e3a9e599df437e5f3b7df90`
-- specification_version: `25616a15c355593138f32986719f830ca2ce2fac6cf1e9e1a2c03209fdd33c02`
-- review_ref: `8af11f7b-6523-4d43-926e-bf5ff1d3d1b2`
+## Workflow optimization — 2026-10-24
 
-No specification behavior or MCP-owned source was changed. Requested Luna scout
-research was read-only; the implementer validated sources and performed all edits
-and checks. Effective inference identity and savings were not independently
-measured. Private Home Lab context remains under .local/homelab; C01 does not use
-cluster credentials or perform hardware operations.
+Both images now use a two-role matrix, preserving actual qualification names.
+PR layers, Go/pip dependencies and SHA256-verified tool downloads are cached;
+main image builds remain cold. Trivy caches only its vulnerability database,
+without disabling refresh. Scans and runtime checks run independently before the
+final always-run aggregate. Go/tool/BuildKit concurrency follows `nproc`; existing
+native memory/quota limits remain authoritative.
 
-No later packet, service code, images/chart, deployment or artifact release was
-executed. F01 is next only after C01's required hosted/settings evidence passes
-and a separate explicit invocation.
+Latest local evidence is `.local/workflow-optimization/`: 100 tooling tests,
+four additional detected in-memory bypasses, actionlint/contracts/agents and
+the actual 22-target Security Check with persistent DB input pass. A real
+BuildKit fixture imported its cached COPY layer and retained OCI attestations.
+Five tool/schema installations measured 6.383s cold versus 0.515s warm locally.
+These are not full GitHub/CUDA build timings. Native runtime/image inputs are
+unchanged, so the earlier actual image/Compose/Helm run remains applicable.
 
-Next action/owner: the C01 implementer publishes the initial source and completes
-hosted acceptance and required-check read-back under the user's explicit approval.
+## Required remaining work and ownership
+
+Next owner/action: the C02 implementation agent must run actual nonpublishing
+GitHub CI on approved clean committed inputs, including current cold image builds,
+after separately authorized commit/push scope is provided. No such authority is
+implied by this packet invocation. Protected environments/credential prerequisites
+must be confirmed before independently authorized publication.
+
+C02 cannot be marked complete on local fixtures or dirty cached artifacts.
+R01/R02 publication and P07/P08 hardware acceptance remain separate.

@@ -1,0 +1,19 @@
+Resident V1 requires existing NVIDIA drivers/device integration, an enforcing CNI
+and compatible storage. Ingress additionally needs an existing controller and TLS
+Secret when configured. Development image tags are unpublished; select qualified
+image identities before deployment. Rendering is not GPU or cluster acceptance.
+
+V1 has no built-in authentication. Anyone reaching the API may transcribe.
+For forwarded client IPs, explicitly set config.api.clientIP.trustedProxyCIDRs
+to operator-confirmed proxy networks and sanitize forwarding headers at Ingress.
+No private/wildcard network is implicitly trusted.
+
+Each API ordinal calls only its backend ordinal. Native HTTP remains loopback.
+No spare-GPU surge is used: a one-GPU update/rollback has downtime. Both Pods must
+use compatible configuration; protocol/fingerprint/generation guards fail closed.
+Cache claims use Retain/Retain. Existing claims are operator-owned and not deleted.
+Prepared claims mount read-only at /prepared. Verify existing claim access modes,
+UID/GID 10001 permissions, capacity and node placement before installation.
+The backend liveness probe tests supervisor process existence independently of
+readiness; it does not certify GPU progress. Runtime CNI/rollout/storage checks
+and the actual Home Lab version remain separately authorized P08 work.

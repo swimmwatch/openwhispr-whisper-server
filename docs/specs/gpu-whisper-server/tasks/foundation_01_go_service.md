@@ -5,21 +5,21 @@ Requirements: REQ-003, REQ-013, REQ-019, REQ-029, REQ-030, REQ-031.
 
 ## Inputs and execution boundary
 
-- source_version: `626342ee71f5181542a95897369aa7cfa0c2982a7e3a9e599df437e5f3b7df90`
-- specification_version: `25616a15c355593138f32986719f830ca2ce2fac6cf1e9e1a2c03209fdd33c02`
-- review_ref: `8af11f7b-6523-4d43-926e-bf5ff1d3d1b2`
+- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
+- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
+- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: planned; not executed. Verify the confirmed scope and pinned Approved specification/review before invocation. Require this packet's explicit invocation and a usable Git worktree. Read linked requirements through workflow MCP, recheck guidance/.codegraph and source freshness before work/completion; never read workflow YAML or review archives directly. No packet execution is authorized by this plan.
+Status: complete; review corrections passed local required checks on 2026-10-22. The user explicitly requested the corrections and selected the Go 1.27.3 update; the narrow amendment passed fresh independent review and has an Approved checkpoint. Read linked requirements through workflow MCP, recheck guidance/.codegraph and source freshness before work/completion; never read workflow YAML or review archives directly. The plan grants no additional execution authority.
 
-Prerequisites: I01 module/tooling, I03 agent rules and C01 bootstrap contributor CI complete. Read core/contracts.yaml runtime.api, go_foundation, observability, rate_limit and configuration; contracts/openapi.yaml parameters/headers/x-error-registry; quality/scenarios.yaml Q-CONFIG/Q-OBSERVABILITY/Q-RATELIMIT/Q-GOFOUNDATION. Primary source links and proposed structure are in plan.md Go foundation decisions; no Go production code currently exists.
+Prerequisites: I01 module/tooling, I03 agent rules and C01 bootstrap contributor CI complete. Read core/contracts.yaml runtime.api, go_foundation, observability, rate_limit and configuration; contracts/openapi.yaml parameters/headers/x-error-registry; quality/scenarios.yaml Q-CONFIG/Q-OBSERVABILITY/Q-RATELIMIT/Q-GOFOUNDATION. Primary source links and structure are in plan.md Go foundation decisions. Production foundation packages now exist; runtime command/application wiring remains P01-P04.
 
-Run checks from the project root with rtk. Tests below are to create, not observed passes. Write/run discriminating RED before behavior, implement to GREEN, and PROVE absence/wiring claims not exercised by RED with one reversible mutation. Missing files/symbols alone are not semantic RED. Restore mutations before final checks.
+Run checks from the project root with rtk. The table below retains the acceptance targets; actual results are recorded in completion evidence and handoff. Write/run discriminating RED before behavior, implement to GREEN, and PROVE absence/wiring claims not exercised by RED with one reversible mutation. Missing files/symbols alone are not semantic RED. Restore mutations before final checks.
 
 ## Ownership and scope
 
 Allowed: go.mod/go.sum; internal/domain/**; internal/platform/config/** and logging/**; internal/adapter/httpapi middleware, errors and ratelimit/**; adjacent tests; tools/check_go_architecture.py and narrow existing contributor-CI/check integration. Add packages only for actual behavior, not empty scaffolding. Application/domain types cannot import adapters/platform/Echo/Koanf/validator. Runtime entry wiring belongs to cmd constructors in the later consuming packets; no dummy HTTP server, GPU/model implementation or Redis client in this foundation packet.
 
-Pin Echo v5.4.0, Koanf v2.3.8 and validator/v10 v10.30.5 using the existing Go 1.26.5 module. Resolve verified compatible provider/transitive versions and commit-worthy go.sum; inspect licenses/security and actual module minimum versions. Use standard-library slog/flag/context/error facilities rather than adding alternative logging/CLI/DI frameworks.
+Pin Echo v5.4.0, Koanf v2.3.8 and validator/v10 v10.30.5 using the existing Go 1.27.3 module. Resolve verified compatible provider/transitive versions and commit-worthy go.sum; inspect licenses/security and actual module minimum versions. Use standard-library slog/flag/context/error facilities rather than adding alternative logging/CLI/DI frameworks.
 
 Read core/contracts.yaml go_foundation.error_contract and Q-ERRORS. Define the small domain Failure/FailureKind format with semantic Kind, optional logical Field and wrapped Cause; implement ordinary Error/Unwrap and use errors.Is/As plus %w. No HTTP statuses/headers, Echo types, public messages/type or JSON tags belong in this format. Use standard Go errors, without an additional error framework.
 
@@ -54,6 +54,84 @@ Use deterministic clocks or a tiny test-only TTL with bounded eventual assertion
 
 Planned commands: `rtk proxy go mod verify`; `rtk proxy go test ./internal/domain/... ./internal/platform/... ./internal/adapter/httpapi/... -count=1`; repeat affected packages with `-race`; `rtk proxy python3 tools/check_go_architecture.py`; `rtk proxy go vet ./...`; check `gofmt -l` has no entries. Wire these real checks into existing contributor CI once packages exist. GPU tests and full image/chart Security Check remain later packet evidence.
 
-## Completion
+## Completion evidence
+
+Implemented domain/config/logging/HTTP foundation and real CI/import/default
+checks. Go 1.27.2 module download/verify/tidy-diff, gofmt, all four package tests
+and race checks, vet, actual import graph, 20 tooling tests, contract/agent checks,
+actionlint and Trivy source-secret scan passed. Eighteen reversible PROVE
+mutations triggered intended assertions and were restored. The original
+Go 1.26.5 vulnerability scan failed; the user-selected, independently reviewed
+1.27.2 update eliminated reachable findings. Govulncheck v1.8.0 exits 0 with
+zero reachable/imported-package findings and one non-imported openpgp
+module-only advisory; no suppression was added. Actual dependency licenses and
+minimum Go versions were inspected. See [handoff.md](handoff.md) for exact
+commands, source pins, RED/GREEN/PROVE and limitations. No hosted F01 CI,
+runtime/transcription/GPU evidence, code review, commit or push is claimed.
+
+## Configuration rework (2026-10-16)
+
+The user requested a simpler configuration implementation. Replaced the custom
+recursive type decoder with the existing mapstructure decoder: ErrorUnused,
+exact MatchName and native json.Number support with a small number-to-string
+guard. Standard flag.Func handles parsing/duplicates; the basicflag provider
+receives only explicitly supplied values, without an Exists adapter or a second
+flag-name remapping pass. Source bindings, required JSON precheck and typed
+partial validation are separated from Load's orchestration. Load decreased
+from 113 to 31 lines; total loader implementation decreased from 435 to 402
+lines across its focused files. No dependency or public configuration contract
+changed.
+
+All four Go package tests/race checks, vet, module verification, import-boundary
+and contract checks passed on Go 1.27.2. Govulncheck exited 0 with zero reachable
+or imported-package findings and the previously documented module-only finding.
+New regression cases cover number-to-string conversion, nulls, nested key case,
+duration overflow, duplicate/omitted flags and malformed environment entries.
+Six reversible mutations proved numeric/null/case/unknown-key guards, explicit
+flag selection and per-source validation, then were restored. Existing tests
+also caught accidental unflattening of dotted JSON property names during the
+refactor; preserving structured JSON maps fixed it. The explicit-flag mutation
+initially exposed a missing assertion for omitted boolean flags; the added
+assertion detects it. No next packet or commit was performed.
+
+## Remaining Go library audit (2026-10-16)
+
+The user authorized auditing the remaining Go code and replacing redundant
+custom implementations. Reused the pinned validator's hostname_rfc1123,
+sha256, unique and unique=ID checks, standard slog.Level.UnmarshalText and
+Echo's RequestID generator. Closed accepted values, hostname compatibility,
+safe header normalization and strict per-source rejection remain tested.
+Replaced the test polling loop with standard testing/synctest fake time while
+retaining assertions against the real Echo store. No new dependencies or
+behavioral specification changes were needed.
+
+Contract-specific error/privacy/panic/proxy/store adapters remain necessary;
+the pinned libraries' defaults do not implement those guarantees. Fresh Go
+tests/race/vet, module/format/import/contract checks, govulncheck and source-secret
+scan passed. Eight restored mutations verified the changed guards and timer
+tests. Full audit rationale and limits are recorded in handoff.md. This is F01
+rework only; no later packet, commit or push was performed.
+
+## Review corrections (2026-10-22)
+
+Equal backend/native ports explicitly supplied by one source are rejected before
+merge. A Load-level regression failed for JSON-before-CLI, JSON-before-environment
+and environment-before-CLI correction cases before the fix; all pass afterward.
+Valid partial overrides across sources still work, and final equal ports reject.
+These direct RED failures exercise the intended assertions; no additional
+mutation was needed for this correction.
+
+The user selected Go 1.27.3 to address GO-2026-6809. Updated the module,
+authenticated toolchain identity/checksums, contributor guidance, checker fixtures,
+current planning contracts and changelog. Pinned govulncheck v1.8.0 was rebuilt
+with Go 1.27.3. Fresh normal/race Go tests, vet, formatting, module verify/tidy-diff,
+the import checker, all 20 tooling tests and source-secret scan passed.
+Govulncheck exits 0 with no reachable/imported-package findings; the unimported
+OpenPGP module-only advisory remains. The updated specification passed 93/93
+independent completeness/consistency items and the author-made Approved checkpoint.
+Earlier dated evidence above remains historical. See handoff.md for final checks
+and limits; no later packet, commit, push or deployment was performed.
+
+## Completion rule
 
 An incompatible/missing module or violated import/config/middleware contract leaves F01 incomplete. Fix the owning integration/dependency and rerun affected checks; do not relax configuration, privacy or trust guards to obtain green. Record module/tool identities and actual results plus RED/GREEN/PROVE evidence. Recheck source freshness, mark only F01 in [todo.md](todo.md) after required checks pass and update [handoff.md](handoff.md). Preserve unrelated work and stop after this packet; no automatic next packet, commit, publication or deployment.
