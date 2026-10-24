@@ -42,6 +42,8 @@ func TestInvalidAPIConfiguration(t *testing.T) {
 }
 
 func TestAPIAssembly(t *testing.T) {
+	const transcriptionTimeout = 10 * time.Second
+
 	var fingerprint atomic.Value
 	fingerprint.Store("")
 	var inference, health atomic.Int32
@@ -126,7 +128,7 @@ func TestAPIAssembly(t *testing.T) {
 		"--cache-dir=" + filepath.Join(root, "cache"),
 		"--shutdown-seconds=1",
 		"--cleanup-seconds=1",
-		"--operation-seconds=3",
+		"--operation-seconds=" + strconv.Itoa(int(transcriptionTimeout/time.Second)),
 		"--log-level=debug",
 		"--rate-limit-burst=1",
 		"--rate-limit-requests-per-second=0.01",
@@ -233,14 +235,22 @@ func TestAPIAssembly(t *testing.T) {
 		err      error
 	}
 	responseDone := make(chan outcome, 1)
+	transcriptionClient := &http.Client{Timeout: transcriptionTimeout}
 	go func() {
-		response, err := client.Do(request)
+		response, err := transcriptionClient.Do(request)
 		responseDone <- outcome{response, err}
 	}()
 
 	select {
 	case <-entered:
-	case <-time.After(2 * time.Second):
+	case completed := <-responseDone:
+		if completed.err != nil {
+			t.Fatalf("transcription failed before private inference: %v", completed.err)
+		}
+
+		_ = completed.response.Body.Close()
+		t.Fatalf("transcription returned HTTP %d before private inference", completed.response.StatusCode)
+	case <-time.After(transcriptionTimeout):
 		t.Fatal("private inference was not entered")
 	}
 
