@@ -41,7 +41,6 @@ COPY internal ./internal
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
 RUN --mount=type=cache,id=whisper-go-mod-${GO_VERSION}-amd64,target=/go/pkg/mod \
     --mount=type=cache,id=whisper-go-build-${GO_VERSION}-amd64,target=/root/.cache/go-build <<BUILD
-test ! -e /dev/nvidia0
 go mod verify
 mkdir -p /out/licenses/go
 go build -trimpath -buildvcs=false -o /out/whisper-api ./cmd/api
@@ -98,7 +97,6 @@ ARG FETCH_CONNECT_TIMEOUT
 ARG FETCH_MAX_TIME
 ARG FETCH_RETRIES
 RUN <<BUILD
-test ! -e /dev/nvidia0
 curl -fsSL \
     --connect-timeout "${FETCH_CONNECT_TIMEOUT}" \
     --max-time "${FETCH_MAX_TIME}" \

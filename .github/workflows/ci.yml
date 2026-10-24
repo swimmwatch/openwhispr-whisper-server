@@ -220,9 +220,7 @@ jobs:
         key: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-${{ hashFiles('containers/*.Dockerfile',
           'containers/build-inputs.json', 'go.mod', 'go.sum', 'tools/versions.yaml') }}-${{ github.sha
           }}
-        restore-keys: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-${{
-          hashFiles('containers/*.Dockerfile', 'containers/build-inputs.json', 'go.mod', 'go.sum', 'tools/versions.yaml')
-          }}-
+        restore-keys: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-
 
     - name: Prepare image export
       run: mkdir -p "$RUNNER_TEMP/artifacts/$ROLE"
