@@ -124,6 +124,11 @@
     "scope": "Historical I01 verification environment; not a project dependency or CI prerequisite"
   },
   "ci": {
+    "ffmpeg": {
+      "version": "7:6.1.1-3ubuntu5",
+      "distribution": "ubuntu24.04",
+      "verification": "Installed from the Ubuntu noble archive and exercised by the successful source job 120926382158 in GitHub Actions run 40112227254."
+    },
     "python": "3.14.9",
     "requirements_lock": "uv.lock",
     "actions": {

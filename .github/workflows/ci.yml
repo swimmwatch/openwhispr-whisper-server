@@ -71,9 +71,12 @@ jobs:
         go vet ./...
 
     - name: Install FFmpeg for real audio and API tests
+      env:
+        FFMPEG_VERSION: ${{ env.CI_FFMPEG_VERSION }}
       run: |
         sudo apt-get update
-        sudo apt-get install --yes --no-install-recommends ffmpeg
+        sudo apt-get install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
+        test "$(dpkg-query -W -f='${Version}' ffmpeg)" = "$FFMPEG_VERSION"
 
     - name: Test real Go foundation behavior and concurrency
       run: |
