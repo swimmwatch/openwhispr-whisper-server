@@ -47,3 +47,7 @@ ggml-*.bin
 .claude/projects/
 .claude/history.jsonl
 .agents/.cache/
+
+# Python developer-tool caches
+.ruff_cache/
+.mypy_cache/

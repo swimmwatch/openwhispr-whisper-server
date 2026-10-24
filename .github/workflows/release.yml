@@ -1,0 +1,410 @@
+name: Protected artifact publication
+
+'on':
+  workflow_dispatch:
+    inputs:
+      inventory:
+        description: Reviewed versioned release inventory path in this main revision
+        required: true
+        type: string
+      ci-run-id:
+        description: Successful main CI run for this exact revision
+        required: true
+        type: string
+      stage:
+        description: Release preparation stage
+        required: true
+        type: choice
+        options:
+        - candidate
+        - stable
+
+permissions: {}
+
+concurrency:
+  group: whisper-artifact-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: &runner ubuntu-24.04
+    timeout-minutes: 120
+    environment: release
+    outputs:
+      images-run: ${{ steps.selection.outputs.images-run }}
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    env:
+      INVENTORY: ${{ inputs.inventory }}
+      STAGE: ${{ inputs.stage }}
+      SELECTED_RUN: ${{ inputs.ci-run-id }}
+    steps:
+    - uses: &checkout actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: &ci_config ./.github/actions/ci-config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'false'
+        dev-dependencies: 'false'
+
+    - name: Validate inventory path and selected run
+      id: selection
+      run: |
+        echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-auth" >> "$GITHUB_ENV"
+        echo "HELM_REGISTRY_CONFIG=$RUNNER_TEMP/helm-auth.json" >> "$GITHUB_ENV"
+        uv run --no-sync --no-dev python tools/release/select_run.py \
+          --inventory "$INVENTORY" \
+          --selected-run "$SELECTED_RUN" \
+          --stage "$STAGE" \
+          --output "$GITHUB_OUTPUT"
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - uses: &download_artifact actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        run-id: ${{ inputs.ci-run-id }}
+        github-token: ${{ github.token }}
+        name: chart
+        path: ${{ runner.temp }}/current/chart
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ inputs.ci-run-id }}
+        github-token: ${{ github.token }}
+        name: security-summary
+        path: ${{ runner.temp }}/current/security-summary
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ steps.selection.outputs.images-run }}
+        github-token: ${{ github.token }}
+        name: api
+        path: ${{ runner.temp }}/accepted/api
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ steps.selection.outputs.images-run }}
+        github-token: ${{ github.token }}
+        name: backend
+        path: ${{ runner.temp }}/accepted/backend
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ steps.selection.outputs.images-run }}
+        github-token: ${{ github.token }}
+        name: chart
+        path: ${{ runner.temp }}/accepted/chart
+
+    - name: Cache vulnerability database only
+      uses: ./.github/actions/cache-trivy-db
+
+    - name: Set up verified Trivy
+      uses: ./.github/actions/setup-trivy
+      with:
+        destination: ${{ runner.temp }}/release-tools
+        cache: 'false'
+
+    - name: Select immutable images and perform fresh release security checks
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/release-tools" --tools helm3 buildx govulncheck gosec hadolint --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        echo "$RUNNER_TEMP/release-tools" >> "$GITHUB_PATH"
+        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/accepted"
+        uv run --no-sync --no-dev python tools/release/prepare.py --inventory "$INVENTORY" --stage "$STAGE" --current "$RUNNER_TEMP/current" --candidate "$RUNNER_TEMP/accepted" --output "$RUNNER_TEMP/artifacts" --helm "$RUNNER_TEMP/release-tools/helm3"
+        uv run --no-sync --no-dev python tools/security/run.py --artifacts "$RUNNER_TEMP/artifacts" --bin "$RUNNER_TEMP/release-tools" --image-source-sha "${{ steps.selection.outputs.image-source }}" --output "$RUNNER_TEMP/selected-security.json" --db-cache "$CI_TRIVY_CACHE_DIR"
+        uv run --no-sync --no-dev python tools/release/verify_ci.py --inventory "$INVENTORY" --stage "$STAGE" --security "$RUNNER_TEMP/current/security-summary/security.json" --selected-security "$RUNNER_TEMP/selected-security.json"
+
+    - name: Prepare task-local Docker authentication
+      run: |
+        umask 077
+        mkdir -p "$RUNNER_TEMP/docker-auth"
+
+    - name: Authenticate Docker registry ghcr.io
+      uses: &login_action docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+      env:
+        DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+        logout: true
+
+    - name: Authenticate Docker registry docker.io
+      uses: *login_action
+      env:
+        DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        logout: true
+
+    - name: Authenticate Helm OCI registry
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        printf '%s' "$GH_TOKEN" | "$RUNNER_TEMP/release-tools/helm3" registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+    - name: Copy selected images unchanged and verify anonymous reads
+      run: uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage
+        "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel
+        images
+
+    - name: Publish the identical chart archive to OCI
+      run: uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage
+        "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel
+        chart --helm "$RUNNER_TEMP/release-tools/helm3"
+
+    - name: Preserve partial channel state
+      if: ${{ always() }}
+      uses: &upload_artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: publication-state
+        overwrite: true
+        path: ${{ runner.temp }}/channel-state.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+
+    - name: Remove task-local credentials
+      if: ${{ always() }}
+      run: |
+        rm -rf "$DOCKER_CONFIG"
+        rm -f "$HELM_REGISTRY_CONFIG"
+
+  pages:
+    needs: publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: *runner
+    timeout-minutes: &timeout30 30
+    environment: release-pages
+    permissions:
+      contents: write
+      actions: read
+      pages: write
+      id-token: write
+    env:
+      INVENTORY: ${{ inputs.inventory }}
+      STAGE: ${{ inputs.stage }}
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'false'
+        dev-dependencies: 'false'
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - uses: *download_artifact
+      with:
+        name: publication-state
+        path: ${{ runner.temp }}
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ inputs.ci-run-id }}
+        github-token: ${{ github.token }}
+        name: chart
+        path: ${{ runner.temp }}/artifacts/chart
+
+    - name: Prepare merged Pages index using the existing publication branch
+      run: |
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/release-tools" --tools helm3 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        git fetch origin gh-pages
+        git worktree add --detach "$RUNNER_TEMP/pages" FETCH_HEAD
+        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel pages-prepare --pages-dir "$RUNNER_TEMP/pages" --helm "$RUNNER_TEMP/release-tools/helm3"
+
+    - name: Publish Pages branch without rewriting existing history
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        git -C "$RUNNER_TEMP/pages" config user.name github-actions\[bot\]
+        git -C "$RUNNER_TEMP/pages" config user.email 41898282+github-actions\[bot\]@users.noreply.github.com
+        git -C "$RUNNER_TEMP/pages" add -- index.yaml whisper-server-*.tgz
+        if ! git -C "$RUNNER_TEMP/pages" diff --cached --quiet; then
+          git -C "$RUNNER_TEMP/pages" commit -m 'chore(release): publish selected Helm archive'
+          AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
+          git -C "$RUNNER_TEMP/pages" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" push origin HEAD:gh-pages
+        fi
+
+    - name: Upload merged site for explicit Pages deployment
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
+      with:
+        path: ${{ runner.temp }}/pages
+
+    - name: Deploy merged Pages artifact
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
+
+    - name: Verify anonymous Pages archive and index
+      run: |
+        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel pages-verify
+        if [ "$STAGE" = candidate ]; then
+          uv run --no-sync --no-dev python tools/release/check.py --inventory "$RUNNER_TEMP/channel-state.json" --stage "$STAGE"
+        fi
+
+    - name: Preserve final or partial publication state
+      if: ${{ always() }}
+      uses: *upload_artifact
+      with:
+        name: final-publication-state
+        overwrite: true
+        path: ${{ runner.temp }}/channel-state.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+
+  aliases:
+    needs:
+    - publish
+    - pages
+    if: github.ref == 'refs/heads/main' && inputs.stage == 'stable'
+    runs-on: *runner
+    timeout-minutes: *timeout30
+    environment: release
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    env:
+      INVENTORY: ${{ inputs.inventory }}
+      STAGE: stable
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'false'
+        dev-dependencies: 'false'
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - uses: *download_artifact
+      with:
+        name: final-publication-state
+        path: ${{ runner.temp }}
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ needs.publish.outputs.images-run }}
+        github-token: ${{ github.token }}
+        name: api
+        path: ${{ runner.temp }}/artifacts/api
+
+    - uses: *download_artifact
+      with:
+        run-id: ${{ needs.publish.outputs.images-run }}
+        github-token: ${{ github.token }}
+        name: backend
+        path: ${{ runner.temp }}/artifacts/backend
+
+    - name: Install and verify immutable alias inputs
+      run: |
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/release-tools" --tools buildx --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        echo "$RUNNER_TEMP/release-tools" >> "$GITHUB_PATH"
+        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/artifacts" --images-only
+
+    - name: Prepare task-local Docker authentication
+      run: |
+        umask 077
+        mkdir -p "$RUNNER_TEMP/docker-auth"
+
+    - name: Authenticate Docker registry ghcr.io
+      uses: *login_action
+      env:
+        DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+        logout: true
+
+    - name: Authenticate Docker registry docker.io
+      uses: *login_action
+      env:
+        DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        logout: true
+
+    - name: Find the original alias snapshot for this workflow run
+      id: alias-recovery
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        SNAPSHOT_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=stable-alias-snapshot&per_page=100" --jq '.artifacts | if length == 0 then "" elif length == 1 and .[0].expired == false then .[0].id else error("Ambiguous or expired alias snapshot") end')"
+        printf 'artifact-id=%s\n' "$SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the original alias snapshot on retry
+      if: steps.alias-recovery.outputs.artifact-id != ''
+      uses: *download_artifact
+      with:
+        artifact-ids: ${{ steps.alias-recovery.outputs.artifact-id }}
+        path: ${{ runner.temp }}
+        merge-multiple: true
+
+    - name: Prepare alias rollback before any registry writes
+      if: steps.alias-recovery.outputs.artifact-id == ''
+      run: uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage
+        stable --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel
+        aliases-prepare
+
+    - name: Persist the original alias snapshot before registry writes
+      if: steps.alias-recovery.outputs.artifact-id == ''
+      uses: *upload_artifact
+      with:
+        name: stable-alias-snapshot
+        path: ${{ runner.temp }}/channel-state.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+
+    - name: Finalize qualified stable aliases
+      env:
+        DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
+      run: |
+        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage stable --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel aliases
+        uv run --no-sync --no-dev python tools/release/check.py --inventory "$RUNNER_TEMP/channel-state.json" --stage stable
+
+    - name: Preserve complete or partial stable state
+      if: ${{ always() }}
+      uses: *upload_artifact
+      with:
+        name: stable-publication-state
+        overwrite: true
+        path: ${{ runner.temp }}/channel-state.json
+        if-no-files-found: warn
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+
+    - name: Remove task-local registry credentials
+      if: ${{ always() }}
+      run: rm -rf "$RUNNER_TEMP/docker-auth"

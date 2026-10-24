@@ -1,0 +1,96 @@
+# replicaCount is the number of ordinal-paired API/backend instances; each needs GPUs.
+replicaCount: 1
+
+# nameOverride overrides the chart name in stable labels.
+nameOverride: ""
+
+# fullnameOverride overrides the resource prefix (maximum 45 DNS-label characters).
+fullnameOverride: ""
+
+# images selects two independent repositories/tags or immutable digests. Dev tags are unpublished.
+images:
+  api:
+    repository: ghcr.io/swimmwatch/openwhispr-whisper-server-api
+    tag: 0.0.0-dev
+    digest: ""
+  backend:
+    repository: ghcr.io/swimmwatch/openwhispr-whisper-server-backend
+    tag: 0.0.0-dev
+    digest: ""
+
+# imagePullSecrets references existing credentials; the chart creates no Secrets.
+imagePullSecrets: []
+
+# config overrides the canonical files/defaults.json snapshot; collections replace.
+# The snapshot must remain byte-identical to internal/platform/config/defaults.json.
+# Keys inside config preserve the application's JSON spelling, including schema_version.
+config: {}
+
+# api configures CPU/RAM and operator-owned scheduling prerequisites.
+api:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 512Mi
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  runtimeClassName: ""
+
+# backend configures resources/scheduling; GPU requests and limits must match.
+backend:
+  gpu:
+    requests: 1
+    limits: 1
+  resources:
+    requests:
+      cpu: '1'
+      memory: 1Gi
+    limits:
+      cpu: '4'
+      memory: 4Gi
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  runtimeClassName: ""
+
+# cache creates retained per-backend claims unless an existing operator claim is selected.
+# Existing shared claims require declared ReadWriteMany access for multiple replicas.
+cache:
+  existingClaim: ""
+  size: 10Gi
+  storageClassName: null
+  accessModes: [ReadWriteOnce]
+
+# prepared mounts an existing operator claim read-only at /prepared, never host files.
+# accessModes must describe that claim's actual supported access modes.
+prepared:
+  existingClaim: ""
+  accessModes: [ReadOnlyMany]
+
+# transientStorage bounds separate disk-backed /tmp volumes; it never holds the model cache.
+transientStorage:
+  api: 2Gi
+  backend: 1Gi
+
+# probes uses bounded checks; startup includes provisioning and the native operation bound.
+probes:
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# terminationGracePeriodSeconds defaults to shutdownSeconds + cleanupSeconds + 5.
+terminationGracePeriodSeconds: null
+
+# ingress exposes only the API through an existing controller and optional existing TLS Secret.
+# When trusting forwarded headers, set explicit operator proxy CIDRs in config.api.clientIP
+# and configure the controller to replace/sanitize client-supplied forwarding headers.
+ingress:
+  enabled: false
+  host: ""
+  className: ""
+  annotations: {}
+  tlsSecretName: ""

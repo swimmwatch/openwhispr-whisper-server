@@ -5,11 +5,11 @@ Requirements: REQ-001, REQ-002, REQ-004, REQ-005, REQ-006, REQ-007, REQ-011, REQ
 
 ## Reviewed inputs
 
-- source_version: `626342ee71f5181542a95897369aa7cfa0c2982a7e3a9e599df437e5f3b7df90`
-- specification_version: `25616a15c355593138f32986719f830ca2ce2fac6cf1e9e1a2c03209fdd33c02`
-- review_ref: `8af11f7b-6523-4d43-926e-bf5ff1d3d1b2`
+- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
+- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
+- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: planned; not executed. Verify the confirmed scope and pinned Approved specification/review before invocation. Explicit invocation, usable Git worktree, passing dependencies and named target access are required. Git/worktree preparation is planned in I01; its explicitly invoked executor owns that prerequisite. Planning has not initialized Git. Read linked exact requirements via MCP, recheck guidance/.codegraph and pinned source before work and completion. All commands run from project root with rtk. Create/run discriminating checks before any fixes; record relevant RED and corrected GREEN. A missing environment is not semantic RED. PROVE newly written absence/wiring assertions with one reversible mutation and restore. Required missing hardware/access/checks keep the packet incomplete.
+Status: planned; technically agreed (2026-10-22), not executed. Exact agreement below checked ready against the pinned Approved/reviewed specification. A separate incremental invocation, passing dependencies and any scoped external authority remain required. Preserve completed work; recheck source and agreement freshness before execution and completion.
 
 Prerequisites: P06 and R01 checks passed; shared harness from P07 is available; I03's private Home Lab runbook/access is available; the same candidate's two public image digests and chart checksum/OCI identity are fixed. P07's GPU result cannot substitute for this environment. Read quality/scenarios.yaml scenarios referencing P08; core/contracts.yaml deployment/models/private_backend/delivery and contracts/openapi.yaml public operations. Evidence: spec.md:192, :204, :214, :236 and REQ-027/028.
 
@@ -48,3 +48,38 @@ Record effective logging/rate/proxy settings with each workload. For FIFO/resour
 
 Record exact successful/failed/unrun checks, environment/artifact identities and any mutation/fix. Recheck pinned specification freshness, update this packet's evidence, its sole [todo.md](todo.md) checkbox and current [handoff.md](handoff.md), preserve unrelated work and stop. No automatic next packet, commit, publication or unrelated infrastructure work.
 
+## Technical proposal
+
+Reuse P07's acceptance workload/measurement/assertion code with a separate Helm/Home Lab target adapter; do not duplicate the suite or substitute Docker results. Bind ../core/contracts.yaml deployment/models/private_backend/configuration/delivery; ../quality/scenarios.yaml homelab_gpu, chart_matrix, observation and P08 scenarios, including Q-PAIRING/Q-ROLLOUT/Q-PERFORMANCE; public OpenAPI applies unchanged.
+
+Before any mutation, read the ignored .local/homelab README/inventory and refresh authenticated read-only access, explicit kubeconfig/context, target permissions and actual RTX 2060/driver/VRAM, Kubernetes/Helm/CNI/storage/runtime prerequisites. Keep private inventory/credentials/identifying values only there with directory 0700 and credentials 0600. Never dump them into tracked reports, CI artifacts or image/chart inputs. kubectl always selects kubeconfig/context and scoped namespace; Helm selects kubeconfig/kube-context and explicit release. Do not change the global context.
+
+Use R01's exact public candidate image digests and chart archive/OCI identities, testing both OCI and classic chart paths and both image registries. Generic render/version-skew checks do not prove this actual cluster. Install/upgrade/rollback/uninstall only the separately authorized isolated namespace/release on the actual RTX 2060. No driver/plugin/CNI/storage/Ingress installation, RBAC expansion, label mutation or displacement of unrelated GPU workloads. Optional Ingress tests require existing specifically authorized controller/host/TLS inputs; default is disabled.
+
+Run the same real CUDA public transcription, client/format/isolation, FIFO/cancel/health/privacy/resident and performance evidence as P07, with independently recorded target outcomes. Verify real CNI positive paired API-n -> backend-n and negative non-paired/same-namespace/other-namespace/native access. Use only authorized disposable probe Pods/namespaces. Where two-pair concurrent runtime checks need more GPUs than available, test pair identities/policies with bounded non-GPU probes plus actual installed pair inference; do not claim a second GPU workload ran.
+
+Exercise real one-GPU ordered replacement, config/model change, dependency loss, active/waiting SIGTERM, failed upgrade/rollback and uninstall/reinstall. Observe old/new Pod/native/GPU lifetime, generation compatibility, explicit downtime and retained generated/operator PVCs/cache/prepared files. Routine cleanup deletes only this run's transient workloads, not claims or operator files.
+
+Use the shared test-first/PROVE assertion harness without weakening it for access/hardware limits. Publish only sanitized outcome/performance reports and exact public artifact identities. Any runtime/rendered fix returns to its owner and a new R01 candidate with affected acceptance renewed. Manual target/deployment authority is required independently of this planning answer; missing prerequisites keep P08 incomplete with the established owner and concrete next action.
+
+## Technical agreement
+
+Selected proposal: `p08-homelab-gpu-evidence-v1`. Packet: `P08`.
+
+- proposal_digest: `73141b2225d0865a53871cc9b07d3af9da72d5e035ce15de2284c9f78cfaab51`
+- agreement_ref: `{id: be6db71a-6ebf-4f95-bca4-b81f2da2171a, revision: 4}`
+- sources: this packet's `Technical proposal` and `plan.md#shared-technical-commitments`.
+- provenance: actual synchronous Request User Input acceptance preserved in the managed record; revision 4 corrects only the evidence name Configure to Install and preserves that original answer, not a fresh reply.
+- planning_packet_check: `ready`, no issues (2026-10-22); rechecked after repair. Technical readiness does not satisfy dependencies or authorize implementation/external actions.
+
+Recheck the exact reference/digest and pinned specification before and after execution. Keep metadata/progress outside the frozen sections.
+
+## Execution stages
+
+For each affected behavior stage, write and run its discriminating check first (RED), implement/correct until the correct check passes (GREEN), then apply required one-at-a-time PROVE mutations and restore them before final validation. Missing tools/symbols/hardware alone are not behavioral RED; required unavailable or failed checks keep the packet incomplete.
+
+1. Refresh private Home Lab access/inventory read-only and confirm exact scoped mutation authority.
+2. Resolve candidate chart/images anonymously and revalidate generic matrix against actual target/skew facts.
+3. Use the shared harness with real Helm install and actual RTX 2060 public CUDA inference.
+4. Exercise actual CNI pairing/isolation and one-GPU replace/failure/rollback/uninstall/retained-cache behavior within authorized scope.
+5. Run independent resource/performance/reader-facing recipe evidence, sanitize report and clean only owned transient workloads.

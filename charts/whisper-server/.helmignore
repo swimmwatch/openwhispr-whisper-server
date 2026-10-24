@@ -1,0 +1,10 @@
+.git/
+.local/
+.agents/
+.codex/
+*.tgz
+*.log
+*.key
+*.pem
+.env*
+*kubeconfig*

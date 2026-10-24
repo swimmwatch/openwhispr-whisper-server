@@ -1,0 +1,143 @@
+{{- $root := . -}}
+{{- $c := include "whisper-server.config" . | mustFromJson -}}
+{{- $name := include "whisper-server.fullname" . -}}
+{{- range $role := list "api" "backend" }}
+{{- $options := index $root.Values $role -}}
+{{- $port := ternary $c.api.port $c.backend.port (eq $role "api") }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}-{{ $role }}
+  labels:
+    {{- include "whisper-server.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $root.Values.replicaCount }}
+  serviceName: {{ $name }}-{{ $role }}-headless
+  podManagementPolicy: OrderedReady
+  updateStrategy: {type: RollingUpdate}
+  {{- if eq $role "backend" }}
+  persistentVolumeClaimRetentionPolicy: {whenDeleted: Retain, whenScaled: Retain}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "whisper-server.selector" (dict "root" $root "role" $role) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "whisper-server.selector" (dict "root" $root "role" $role) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "whisper-server.config" $root | sha256sum | quote }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ default (add $c.timeouts.shutdownSeconds $c.timeouts.cleanupSeconds 5) $root.Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $options.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $options.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $options.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $options.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
+      {{- end }}
+      containers:
+        - name: {{ $role }}
+          image: {{ include "whisper-server.image" (index $root.Values.images $role) | quote }}
+          imagePullPolicy: IfNotPresent
+          {{- if eq $role "api" }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              ordinal="${POD_NAME##*-}"
+              exec /usr/local/bin/whisper-api --config /etc/whisper/config.json --backend-url "http://{{ $name }}-backend-$ordinal:{{ $c.backend.port }}"
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          {{- else }}
+          command: [/usr/local/bin/whisper-backend]
+          args: [--config, /etc/whisper/config.json]
+          {{- end }}
+          ports:
+            - {name: http, containerPort: {{ $port }}, protocol: TCP}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            {{- $resources := deepCopy $options.resources }}
+            {{- if eq $role "backend" }}
+            {{- $_ := set $resources.requests "nvidia.com/gpu" (printf "%d" (int $options.gpu.requests)) }}
+            {{- $_ := set $resources.limits "nvidia.com/gpu" (printf "%d" (int $options.gpu.limits)) }}
+            {{- end }}
+            {{- toYaml $resources | nindent 12 }}
+          startupProbe:
+            httpGet: {path: {{ ternary "/health/live" "/health" (eq $role "api") }}, port: http}
+            periodSeconds: {{ $root.Values.probes.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.timeoutSeconds }}
+            failureThreshold: {{ div (add $c.timeouts.provisioningSeconds $c.timeouts.operationSeconds $c.timeouts.cleanupSeconds (sub $root.Values.probes.periodSeconds 1)) $root.Values.probes.periodSeconds }}
+          readinessProbe:
+            httpGet: {path: {{ ternary "/health/ready" "/health" (eq $role "api") }}, port: http}
+            periodSeconds: {{ $root.Values.probes.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.failureThreshold }}
+          livenessProbe:
+            {{- if eq $role "api" }}
+            httpGet: {path: /health/live, port: http}
+            {{- else }}
+            exec: {command: [/bin/sh, -ec, "kill -0 1"]}
+            {{- end }}
+            periodSeconds: {{ $root.Values.probes.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.failureThreshold }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/whisper, readOnly: true}
+            - {name: transient, mountPath: /tmp}
+            {{- if eq $role "backend" }}
+            - {name: cache, mountPath: {{ $c.storage.cacheDir | quote }}}
+            {{- if $root.Values.prepared.existingClaim }}
+            - {name: prepared, mountPath: /prepared, readOnly: true}
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-config}
+        - name: transient
+          emptyDir: {sizeLimit: {{ index $root.Values.transientStorage $role }}}
+        {{- if and (eq $role "backend") $root.Values.cache.existingClaim }}
+        - name: cache
+          persistentVolumeClaim: {claimName: {{ $root.Values.cache.existingClaim }}}
+        {{- end }}
+        {{- if and (eq $role "backend") $root.Values.prepared.existingClaim }}
+        - name: prepared
+          persistentVolumeClaim: {claimName: {{ $root.Values.prepared.existingClaim }}, readOnly: true}
+        {{- end }}
+  {{- if and (eq $role "backend") (empty $root.Values.cache.existingClaim) }}
+  volumeClaimTemplates:
+    - metadata:
+        name: cache
+      spec:
+        accessModes: {{ $root.Values.cache.accessModes | toJson }}
+        {{- if ne $root.Values.cache.storageClassName nil }}
+        storageClassName: {{ $root.Values.cache.storageClassName | quote }}
+        {{- end }}
+        resources: {requests: {storage: {{ $root.Values.cache.size }}}}
+  {{- end }}
+{{ end }}

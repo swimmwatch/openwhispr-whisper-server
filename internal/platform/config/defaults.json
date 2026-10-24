@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "mode": "resident",
+  "models": {
+    "catalog": [{"id": "base", "source": {"kind": "download", "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin", "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", "expected_bytes": 147951465}}],
+    "served": "base",
+    "downloadSet": ["base"]
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "backendUrl": "http://backend:8081",
+    "rateLimit": {"enabled": true, "store": "memory", "requestsPerSecond": 1, "burst": 4, "idleSeconds": 300},
+    "clientIP": {"source": "direct", "trustedProxyCIDRs": []}
+  },
+  "backend": {"port": 8081, "nativePort": 8082, "gpuDevice": 0},
+  "storage": {"cacheDir": "/models"},
+  "queue": {"waitingCapacity": 16},
+  "limits": {"audioBytes": 26214400, "promptBytes": 8192, "decodedSeconds": 900},
+  "timeouts": {"operationSeconds": 600, "cleanupSeconds": 10, "shutdownSeconds": 30, "provisioningSeconds": 1800},
+  "downloads": {"attempts": 3},
+  "logging": {"level": "info"}
+}

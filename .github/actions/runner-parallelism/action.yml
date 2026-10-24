@@ -1,0 +1,18 @@
+name: Configure runner parallelism
+description: Use the runner CPU budget for Go, tool installation and native image builds.
+
+runs:
+  using: composite
+  steps:
+    - name: Export runner worker budgets
+      shell: bash
+      run: |
+        set -euo pipefail
+        ci_cpus=$(nproc)
+        [[ "$ci_cpus" =~ ^[1-9][0-9]*$ ]]
+        printf '%s\n' \
+          "GOMAXPROCS=$ci_cpus" \
+          "GOFLAGS=-p=$ci_cpus" \
+          "CI_TOOL_JOBS=$ci_cpus" \
+          "CI_BUILD_PARALLELISM=$ci_cpus" >> "$GITHUB_ENV"
+        printf 'Available CPUs: %s\n' "$ci_cpus"

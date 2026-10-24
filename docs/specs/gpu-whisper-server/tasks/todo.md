@@ -1,18 +1,53 @@
 # Resident V1 completion checklist
 
-Status: I01, I02, I03 and C01 complete. Hosted main and pull_request checks passed; deliberate failure blocked the test PR and the existing main ruleset now requires Bootstrap checks. Runtime implementation not started. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
+Status: I01, I02, I03, C01, F01 and P01–P06 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Actual cluster/GPU/CNI acceptance, full hosted CI/security qualification, publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
+
+P06's [review corrections](06_helm_chart.md#review-corrections--2026-10-23)
+also passed both new regressions, isolated PROVE checks, all eight chart tests,
+full Go tests with `-race`, vet and structural checks (2026-10-23).
+
+C02 remains unchecked. Local qualification now passes 100 tooling tests without
+skips, actual scanner/registry/index fixtures, accepted-image promotion and
+runner-loss alias recovery. All 22 security targets have zero blocking findings
+and no coverage gaps; three applicable native MEDIUM findings remain reported.
+The current image/Compose/Helm race matrix also passes (372.625s). Current builds
+are cached exports from a dirty checkout; earlier cold exports are historical.
+Actual trusted remote CI on committed current inputs, including clean cold-build
+qualification, remains required. No commit/push/publication is authorized here.
+See the [latest C02 checkpoint](ci_02_build_release_pipeline.md#current-local-checkpoint--2026-10-24)
+and [current handoff](handoff.md) for identities, checks and remaining ownership.
+
+P05's [configured-port correction](05_images_standalone.md#configured-port-correction--2026-10-23)
+also passed render, real container publication/network, focused race and full Go
+checks (2026-10-23). Its later [pipeline correction](05_images_standalone.md#build-pipeline-correction--2026-10-23)
+is followed by the [build optimization report](05_images_standalone.md#build-optimization-and-comparison--2026-10-23)
+with paired timings and passing image/race checks. The latest
+[CPU-quota correction](05_images_standalone.md#cpu-quota-correction--2026-10-23)
+records current rebuilt identities and passing resource/image/race checks;
+older identities remain historical.
+
+P01's exact technical agreement remained ready and the pinned specification
+remained Approved/reviewed at completion. Its frozen proposal is unchanged.
+The whole remaining plan was technically agreed through four synchronous user
+answers (2026-10-22). P02-P09, C02, R01 and R02 each have an exact managed
+agreement and planning_packet_check=ready; the earlier P02 ANSWER_REQUIRED blocker
+is resolved. P02–P06 retain their implementation evidence, including completed
+P05 revalidation. The remaining delivery packets stay unchecked because planning
+readiness is separate from acceptance. P05 CPU-quota correction is complete. A separately
+invoked C02 resume needs fresh preflight and its remaining required checks.
+R01 is not yet eligible.
 
 - [x] [I01 — local project initialization](init_01_local_project.md)
 - [x] [I02 — public GitHub and open-source foundation](init_02_github_open_source.md)
 - [x] [I03 — Codex project tooling](init_03_agent_tooling.md)
 - [x] [C01 — early contributor CI](ci_01_bootstrap_checks.md)
-- [ ] [F01 — Go settings, logging, middleware and architecture](foundation_01_go_service.md)
-- [ ] [P01 — configuration and models](01_configuration_models.md)
-- [ ] [P02 — backend supervisor](02_backend_supervisor.md)
-- [ ] [P03 — HTTP/audio adapter](03_http_audio_adapter.md)
-- [ ] [P04 — queue, health and lifecycle](04_queue_health_lifecycle.md)
-- [ ] [P05 — images and standalone composition](05_images_standalone.md)
-- [ ] [P06 — Helm chart](06_helm_chart.md)
+- [x] [F01 — Go settings, logging, middleware and architecture](foundation_01_go_service.md)
+- [x] [P01 — configuration and models](01_configuration_models.md)
+- [x] [P02 — backend supervisor](02_backend_supervisor.md)
+- [x] [P03 — HTTP/audio adapter](03_http_audio_adapter.md)
+- [x] [P04 — queue, health and lifecycle](04_queue_health_lifecycle.md)
+- [x] [P05 — images and standalone composition](05_images_standalone.md)
+- [x] [P06 — Helm chart](06_helm_chart.md)
 - [ ] [C02 — complete build and release pipeline](ci_02_build_release_pipeline.md)
 - [ ] [R01 — pre-release publication and anonymous pull-back](release_01_prerelease.md)
 - [ ] [P07 — Docker / RTX 5070 Ti Laptop acceptance](07_docker_gpu_acceptance.md)

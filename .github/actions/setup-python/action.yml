@@ -1,0 +1,43 @@
+name: Set up locked Python tooling
+description: Install pinned uv and Python, then synchronize the locked project environment.
+
+inputs:
+  cache:
+    description: Enable the dependency cache for CI; disable it for protected publication.
+    default: 'true'
+  dev-dependencies:
+    description: Install developer tools for the source-check job.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pinned uv
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+      with:
+        version-file: pyproject.toml
+        python-version: ${{ env.CI_PYTHON_VERSION }}
+        enable-cache: ${{ inputs.cache }}
+        cache-dependency-glob: |
+          uv.lock
+          pyproject.toml
+          .python-version
+
+    - name: Sync locked Python project
+      shell: bash
+      env:
+        DEV_DEPENDENCIES: ${{ inputs.dev-dependencies }}
+      run: |
+        set -euo pipefail
+        case "$DEV_DEPENDENCIES" in
+          true)
+            uv sync --locked --no-build
+            ;;
+          false)
+            uv sync --locked --no-build --no-dev
+            ;;
+          *)
+            printf '%s\n' 'Invalid dev-dependencies input' >&2
+            exit 1
+            ;;
+        esac

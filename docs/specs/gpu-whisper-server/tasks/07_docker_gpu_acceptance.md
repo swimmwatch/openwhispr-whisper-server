@@ -5,11 +5,11 @@ Requirements: REQ-001, REQ-002, REQ-004, REQ-005, REQ-006, REQ-007, REQ-011, REQ
 
 ## Reviewed inputs
 
-- source_version: `626342ee71f5181542a95897369aa7cfa0c2982a7e3a9e599df437e5f3b7df90`
-- specification_version: `25616a15c355593138f32986719f830ca2ce2fac6cf1e9e1a2c03209fdd33c02`
-- review_ref: `8af11f7b-6523-4d43-926e-bf5ff1d3d1b2`
+- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
+- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
+- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: planned; not executed. Verify the confirmed scope and pinned Approved specification/review before invocation. Explicit invocation, usable Git worktree, passing dependencies and named target access are required. Git/worktree preparation is planned in I01; its explicitly invoked executor owns that prerequisite. Planning has not initialized Git. Read linked exact requirements via MCP, recheck guidance/.codegraph and pinned source before work and completion. All commands run from project root with rtk. Create/run discriminating checks before any fixes; record relevant RED and corrected GREEN. A missing environment is not semantic RED. PROVE newly written absence/wiring assertions with one reversible mutation and restore. Required missing hardware/access/checks keep the packet incomplete.
+Status: planned; technically agreed (2026-10-22), not executed. Exact agreement below checked ready against the pinned Approved/reviewed specification. A separate incremental invocation, passing dependencies and any scoped external authority remain required. Preserve completed work; recheck source and agreement freshness before execution and completion.
 
 Prerequisites: P05 and R01 passed their own checks; exact public candidate inventory/pulled image digests are fixed. The current machine actually has the named GPU, compatible driver/Docker NVIDIA integration and sufficient VRAM for chosen models. These are unverified runtime prerequisites, not inferred from a build or previous GPU listing. Read quality/scenarios.yaml environments/observation and all scenarios referencing P07; core/contracts.yaml runtime/private_backend/configuration.settings/delivery; contracts/openapi.yaml operations/errors. Requirement evidence: spec.md:35, :214, :236 and REQ-027/028.
 
@@ -76,3 +76,38 @@ Record effective logging/rate/proxy settings with each workload. For FIFO/resour
 
 Record exact successful/failed/unrun checks, environment/artifact identities and any mutation/fix. Recheck pinned specification freshness, update this packet's evidence, its sole [todo.md](todo.md) checkbox and current [handoff.md](handoff.md), preserve unrelated work and stop. No automatic next packet, commit, publication or unrelated infrastructure work.
 
+## Technical proposal
+
+Extend a reusable Go acceptance harness under tests/acceptance, with isolated Docker target setup and sanitized outcome reports under docs/verification. Bind ../quality/scenarios.yaml docker_gpu, observation and all Q-CACHE/STARTUP/INPUT/BOUNDS/FIFO/CANCEL/ISOLATION/HEALTH/FAILURE/PRIVACY/RESIDENT/PACKAGING/ROLLOUT/PERFORMANCE/DISTRIBUTION/RELEASEGATE scenarios; ../core/contracts.yaml runtime/models/private_backend/configuration/delivery and public OpenAPI. Use existing integration checks rather than copy them.
+
+Test only R01's anonymously pulled immutable API/backend candidate manifests on the actual RTX 5070 Ti Laptop target, using P05's one canonical Compose stack. Record actual GPU/driver/VRAM/OS/Engine/Compose/runtime/tool/model/source/image identities and effective limits/rate settings. Do not replace published images with a local rebuild or infer CUDA from enumeration/health alone. Positive native CUDA/model-buffer facts, correlated actual GPU inference and public transcription are required.
+
+Use pinned licensed public audio and derive all advertised formats, including Opus and moov-at-end MP4. Test the default model plus a separately pinned fitting model through config/restart only. Exercise actual OpenAI-compatible client and OpenWhispr supported transport with recorded versions; handwritten HTTP alone is insufficient. Required unavailable client/hardware/driver/observation prerequisites remain incomplete, not waived.
+
+Observe child/group/model-init identity, model-file open/read/mapping, safe resource/fd/file counts, RSS/VRAM and output marker traps, without content logging or production debug endpoints. Calibrate idle/longest-input envelope, then the contracted three blocks of 20 successful requests and failure/cancellation sequences; at least 30 steady requests and declared concurrent sample report startup/load separately from median/p95/public/backend/queue timings and processing/audio ratio. Do not invent a numeric performance SLO or require zero driver baseline memory. Bounded latest native result/allocator retention is documented, not treated as per-request accumulation.
+
+Run all Compose recipes: downloaded cache, zero-source-access offline restart, read-only prepared file, missing-file failure, unchanged restart, changed-config pair recreation and ordinary down/up without volume deletion. Prove native stop/reap, truthful readiness, no old/new GPU overlap and cache retention. FIFO/resource workloads explicitly override rate settings so they reach queue paths; dedicated limiter checks remain separate.
+
+Test harness assertions before trusting evidence and apply required reversible PROVE fixtures/mutations for file retention, per-success reload, overlap and raw output. Mutation images are isolated and cannot qualify the original candidate; restore and rerun the exact accepted identities. Runtime fixes require a new R01 RC and renewed affected checks. Execution needs explicit access to this target; no registry publication/cluster work. Reports record passed/failed/unrun checks and limitations; no substitute environment can complete P07.
+
+## Technical agreement
+
+Selected proposal: `p07-docker-gpu-evidence-v1`. Packet: `P07`.
+
+- proposal_digest: `a91beca407917e6c1206f99d93223f0d72452634c9da1fe53f0efeb0a418b31e`
+- agreement_ref: `{id: be6db71a-6ebf-4f95-bca4-b81f2da2171a, revision: 4}`
+- sources: this packet's `Technical proposal` and `plan.md#shared-technical-commitments`.
+- provenance: actual synchronous Request User Input acceptance preserved in the managed record; revision 4 corrects only the evidence name Configure to Install and preserves that original answer, not a fresh reply.
+- planning_packet_check: `ready`, no issues (2026-10-22); rechecked after repair. Technical readiness does not satisfy dependencies or authorize implementation/external actions.
+
+Recheck the exact reference/digest and pinned specification before and after execution. Keep metadata/progress outside the frozen sections.
+
+## Execution stages
+
+For each affected behavior stage, write and run its discriminating check first (RED), implement/correct until the correct check passes (GREEN), then apply required one-at-a-time PROVE mutations and restore them before final validation. Missing tools/symbols/hardware alone are not behavioral RED; required unavailable or failed checks keep the packet incomplete.
+
+1. Verify explicit Docker GPU target/client/observation access and exact R01 candidate identities.
+2. Write shared acceptance assertions and target driver, calibrate baseline and validate assertion sensitivity.
+3. Run every format/client, lifecycle/queue/cancel/privacy/resource and Compose recipe on actual CUDA.
+4. Run configured retention and performance workloads; restore any isolated mutation and rerun exact candidate identities.
+5. Write sanitized independent Docker report with passed/failed/unrun checks; fixes requiring changed inputs return through a new RC.

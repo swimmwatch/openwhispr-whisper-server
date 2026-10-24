@@ -1,0 +1,93 @@
+name: whisper-server
+
+services:
+  api:
+    image: ${WHISPER_API_IMAGE:-whisper-api:local}
+    platform: linux/amd64
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--config", "/etc/whisper/config.json"]
+    stop_grace_period: ${WHISPER_STOP_GRACE:-45s}
+    ports:
+      - target: ${WHISPER_API_CONTAINER_PORT:-8080}
+        published: "${WHISPER_API_PORT:-8080}"
+        host_ip: "${WHISPER_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ${WHISPER_CONFIG_FILE:?Set WHISPER_CONFIG_FILE to the application JSON configuration}
+        target: /etc/whisper/config.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: volume
+        source: api-work
+        target: /tmp
+    networks: [private]
+    depends_on:
+      backend: {condition: service_started}
+    healthcheck:
+      test: [
+        CMD, curl, --fail, --silent, --max-time, "2", --output, /dev/null,
+        "http://127.0.0.1:${WHISPER_API_CONTAINER_PORT:-8080}/health/ready",
+      ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  backend:
+    image: ${WHISPER_BACKEND_IMAGE:-whisper-backend:local}
+    platform: linux/amd64
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--config", "/etc/whisper/config.json"]
+    stop_grace_period: ${WHISPER_STOP_GRACE:-45s}
+    volumes:
+      - type: bind
+        source: ${WHISPER_CONFIG_FILE:?Set WHISPER_CONFIG_FILE to the application JSON configuration}
+        target: /etc/whisper/config.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${WHISPER_PREPARED_DIR:?Set WHISPER_PREPARED_DIR to a readable directory, empty for downloads}
+        target: /prepared
+        read_only: true
+        bind: {create_host_path: false}
+      - type: volume
+        source: model-cache
+        target: /models
+      - type: volume
+        source: backend-work
+        target: /tmp
+    networks: [private]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${WHISPER_GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test: [
+        CMD, curl, --fail, --silent, --max-time, "2", --output, /dev/null,
+        "http://127.0.0.1:${WHISPER_BACKEND_CONTAINER_PORT:-8081}/health",
+      ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+networks:
+  private:
+    driver: bridge
+
+volumes:
+  model-cache:
+  # Disk-backed scratch volumes: application byte/count limits bound live data.
+  # These are not filesystem quotas. Startup removes only owned abandoned work.
+  api-work:
+  backend-work:

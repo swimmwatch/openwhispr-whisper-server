@@ -5,11 +5,11 @@ Requirements: REQ-020, REQ-024, REQ-026, REQ-027, REQ-028.
 
 ## Inputs and execution boundary
 
-- source_version: `626342ee71f5181542a95897369aa7cfa0c2982a7e3a9e599df437e5f3b7df90`
-- specification_version: `25616a15c355593138f32986719f830ca2ce2fac6cf1e9e1a2c03209fdd33c02`
-- review_ref: `8af11f7b-6523-4d43-926e-bf5ff1d3d1b2`
+- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
+- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
+- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: planned; not executed. Verify the confirmed scope and pinned Approved specification/review before invocation. Read linked requirements through workflow MCP; do not read manifest/decisions or review archives through shell. Recheck guidance and .codegraph before code lookup and pinned specification freshness before work and completion. Every packet requires its own explicit invocation; planned work is not implementation authority.
+Status: planned; technically agreed (2026-10-22), not executed. Exact agreement below checked ready against the pinned Approved/reviewed specification. A separate incremental invocation, passing dependencies and any scoped external authority remain required. Preserve completed work; recheck source and agreement freshness before execution and completion.
 
 All commands below run from the project root and use rtk. Named scripts/tests are **to create**, unless explicitly identified as existing. Write/run the discriminating check before the change; record relevant RED, correct implementation to GREEN, and PROVE newly written absence/wiring assertions with one reversible mutation when RED did not exercise them. A missing file/tool alone is not semantic RED. Restore all probes/mutations before final checks.
 
@@ -42,3 +42,39 @@ A partial publication keeps stable incomplete with exact per-channel state. Pres
 ## Completion
 
 Record actual commands, results, identities and relevant RED/GREEN/PROVE evidence. Recheck pinned specification freshness. Mark only this packet's checkbox in [todo.md](todo.md) after every required check passes and update current [handoff.md](handoff.md). A failed/unavailable required check leaves it incomplete. Preserve unrelated files and stop after this packet; no automatic next packet, review, commit, publication or deployment.
+
+## Technical proposal
+
+Promote an explicitly selected qualified candidate using C02's stable gate and inventory, not an image rebuild. Bind ../core/contracts.yaml delivery/release/versioning/images/chart/security_checks and Q-DISTRIBUTION/Q-RELEASEGATE/Q-SECURITY. Require successful current CI/security and both real P07/P08 target reports for the selected executable/runtime/build inputs plus completed P09 documentation. Failed/missing/skipped reports, source/runtime drift or incomplete channels deny promotion.
+
+Preserve the accepted immutable API/backend image manifests and original source/provenance metadata across stable image tags and both registries. Verification builds may run but cannot replace accepted manifests. Record both candidate and release source identities; documentation-only differences may reuse runtime evidence only after comparing actual build inputs. Any executable/dependency/runtime/rendered-resource change goes through a new R01 candidate and affected GPU acceptance, not a stable-gate exception.
+
+Package the stable chart version/appVersion/final README as a new archive with its own SHA256 and OCI manifest digest. Diff rendered resources/config/image digests and generic Helm/Kubernetes matrix against the accepted candidate. Only proven release/documentation metadata changes can avoid renewed runtime acceptance. Rescan accepted image digests plus final source and newly packaged chart/values with current DB/rules; preserve executable identities, and fail on applicable findings or expired/incorrect evidence.
+
+Publish immutable versioned stable artifacts and merge the classic index first, anonymously read back every image/chart channel, then finalize stable aliases/latest and GitHub release designation. Serialize writes and retain exact per-channel state. A partial finalization is incomplete, preserves previous immutable versions/cache, and can restore prior aliases from recorded inventory; identical-byte retries are idempotent. Never force-move immutable versions or erase prior index entries.
+
+Before writes, run denial fixtures for absent target, mismatched identities, skipped jobs, stale scans, unfinished docs, changed rendering and channel failure. PROVE any unexercised promotion predicate on fixtures, restore and require real gate plus all read-backs. This packet creates only stable inputs/inventory/evidence and authorized versioned release operations, not new service behavior.
+
+Manual gate: explicit later R02 invocation and authority for the selected candidate/version and stable publication. It does not authorize Home Lab deployment, unrelated settings changes, automatic commits/pushes or moving release tags. No stable-complete claim until all required channel/alias/security/documentation checks pass.
+
+## Technical agreement
+
+Selected proposal: `r02-qualified-promotion-v1`. Packet: `R02`.
+
+- proposal_digest: `bbb43fdeeefe76a806b62c75d8e9beca1cc67596a017d883130969e3f856edec`
+- agreement_ref: `{id: 19d3f11e-13ba-4c7a-b727-511a0c24a7d2, revision: 4}`
+- sources: this packet's `Technical proposal` and `plan.md#shared-technical-commitments`.
+- provenance: actual synchronous Request User Input acceptance preserved in the managed record; revision 4 corrects only the evidence name Configure to Install and preserves that original answer, not a fresh reply.
+- planning_packet_check: `ready`, no issues (2026-10-22); rechecked after repair. Technical readiness does not satisfy dependencies or authorize implementation/external actions.
+
+Recheck the exact reference/digest and pinned specification before and after execution. Keep metadata/progress outside the frozen sections.
+
+## Execution stages
+
+For each affected behavior stage, write and run its discriminating check first (RED), implement/correct until the correct check passes (GREEN), then apply required one-at-a-time PROVE mutations and restore them before final validation. Missing tools/symbols/hardware alone are not behavioral RED; required unavailable or failed checks keep the packet incomplete.
+
+1. Select the separately authorized candidate/version; verify both GPU reports, final docs and unchanged runtime/build inputs.
+2. Refresh source/image/chart security and stable-chart metadata/render/schema checks before any stable write.
+3. Run stable denial/rollback fixture checks and the exact real gate.
+4. Publish immutable versioned stable artifacts, anonymously verify every channel, then finalize aliases/latest/GitHub designation.
+5. Read back final state; preserve prior immutable versions/aliases on partial failure and stop only with honest complete/incomplete evidence.

@@ -1,0 +1,10 @@
+{{- include "whisper-server.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "whisper-server.fullname" . }}-config
+  labels:
+    {{- include "whisper-server.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- include "whisper-server.config" . | nindent 4 }}

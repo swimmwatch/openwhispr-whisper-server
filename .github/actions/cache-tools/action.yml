@@ -1,0 +1,11 @@
+name: Cache verified tool downloads
+description: Cache checksum-verified tool archives under the shared job-specific identity.
+
+runs:
+  using: composite
+  steps:
+    - name: Restore and save verified downloads
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+      with:
+        path: ${{ env.CI_DOWNLOAD_CACHE_DIR }}
+        key: ${{ env.CI_DOWNLOAD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('tools/versions.yaml', 'tests/integration/testdata/chart-inputs.json') }}
