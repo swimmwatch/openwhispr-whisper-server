@@ -327,6 +327,14 @@ jobs:
     - name: Load shared CI configuration
       uses: *ci_config
 
+    - name: Set up pinned Docker with OCI image store
+      uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+      with:
+        version: ${{ env.CI_DOCKER_VERSION }}
+        set-host: 'true'
+        daemon-config: |
+          {"features":{"containerd-snapshotter":true}}
+
     - name: Set up locked Python tooling
       uses: ./.github/actions/setup-python
       with:

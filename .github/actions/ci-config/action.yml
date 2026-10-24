@@ -40,6 +40,7 @@ runs:
         jq -er '
           {
             CI_BUILDX_VERSION: .ci.buildx.version,
+            CI_DOCKER_VERSION: .ci.docker.version,
             CI_FFMPEG_VERSION: .ci.ffmpeg.version,
             CI_BUILDKIT_IMAGE: .ci.buildkit.image,
             CI_SBOM_GENERATOR: .ci.buildkit.sbom_generator,

@@ -124,6 +124,10 @@
     "scope": "Historical I01 verification environment; not a project dependency or CI prerequisite"
   },
   "ci": {
+    "docker": {
+      "version": "v29.9.2",
+      "source": "https://download.docker.com/linux/static/stable/x86_64/docker-29.9.2.tgz"
+    },
     "ffmpeg": {
       "version": "7:6.1.1-3ubuntu5",
       "distribution": "ubuntu24.04",
@@ -167,6 +171,11 @@
         "version": "v10.3.2",
         "sha": "07a047e608db84b3d8c06cd9a7c7dcc9c355c18e",
         "source": "https://github.com/astral-sh/setup-uv/tree/07a047e608db84b3d8c06cd9a7c7dcc9c355c18e"
+      },
+      "docker/setup-docker-action": {
+        "version": "v5.6.0",
+        "sha": "7ec28a010822b4626af4874f9448a4b05ac6f3e5",
+        "source": "https://github.com/docker/setup-docker-action/tree/7ec28a010822b4626af4874f9448a4b05ac6f3e5"
       },
       "docker/setup-buildx-action": {
         "version": "v4.4.1",
