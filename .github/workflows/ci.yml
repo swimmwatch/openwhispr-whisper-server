@@ -173,6 +173,7 @@ jobs:
       with:
         name: chart
         path: ${{ runner.temp }}/artifacts/chart
+        include-hidden-files: true
         if-no-files-found: error
         retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
 
