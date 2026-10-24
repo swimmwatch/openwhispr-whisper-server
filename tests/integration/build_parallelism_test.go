@@ -97,7 +97,8 @@ BUILD
 `, bases[1], budgets.String())
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					// Include time to fetch and unpack the pinned base image on a cold runner.
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 					defer cancel()
 
 					args := []string{
