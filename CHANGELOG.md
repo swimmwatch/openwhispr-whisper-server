@@ -62,6 +62,8 @@ added when releases exist.
 
 ### Fixed
 
+- Replace the security summary on CI retries so the aggregate cannot download
+  an earlier failed scan report.
 - Set both packaged chart image tags to the selected release version.
 - Authenticate first-publication collision checks and require anonymous image
   read-back on retries as well as after uploads.

@@ -303,6 +303,7 @@ jobs:
       uses: *upload_artifact
       with:
         name: security-summary
+        overwrite: true
         path: ${{ runner.temp }}/security.json
         if-no-files-found: error
         retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
