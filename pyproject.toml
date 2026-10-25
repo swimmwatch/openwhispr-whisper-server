@@ -4,7 +4,6 @@ version = "0.0.0"
 description = "Private development, security and release tooling for the Whisper server"
 requires-python = "==3.14.9"
 dependencies = [
-    "jsonschema==4.26.0",
     "PyYAML==6.0.3",
 ]
 

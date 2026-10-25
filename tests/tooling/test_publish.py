@@ -1,52 +1,111 @@
+import base64
 import hashlib
+import io
+import json
+import os
+import tempfile
 import unittest
-from functools import partial
+import urllib.error
+import urllib.request
+from email.message import Message
+from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import patch
 
 from tests.tooling.test_release import NOW, inventory
 from tools.release import check
-from tools.security.check import validate as validate_security
 
 
 class PublisherTests(unittest.TestCase):
-    @patch("tools.release.verify_ci.security_check", partial(validate_security, now=NOW))
-    def test_external_ci_must_be_the_actual_successful_main_source_run(self) -> None:
-        import copy
+    def test_first_push_checks_authenticated_existence_then_reads_anonymously(self) -> None:
+        from tools.release import publish
 
-        from tests.tooling.test_security import SecurityAggregateTests
-        from tools.release.verify_ci import verify
+        content = b'{"fixture":true}'
+        expected = "sha256:" + hashlib.sha256(content).hexdigest()
+        login = base64.b64encode(b"fixture:credential").decode()
+        token_headers: list[str | None] = []
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "config.json").write_text(
+                json.dumps({"auths": {"ghcr.io": {"auth": login}}})
+            )
+            with (
+                patch.dict(os.environ, {"DOCKER_CONFIG": directory}),
+                patch.object(publish, "command") as writer,
+            ):
 
-        data = inventory()
-        security = SecurityAggregateTests().inventory()
-        run = {
-            "id": 1,
-            "event": "push",
-            "head_branch": "main",
-            "conclusion": "success",
-            "head_sha": data["release_source_sha"],
-            "path": ".github/workflows/ci.yml",
-        }
-        jobs = [{"name": name, "conclusion": "success"} for name in check.REQUIRED_JOBS]
-        verify(data, run, jobs, security, data["release_source_sha"])
+                def exchange(request: urllib.request.Request | str, timeout: int) -> io.BytesIO:
+                    url = request if isinstance(request, str) else request.full_url
+                    authorization = (
+                        None if isinstance(request, str) else request.get_header("Authorization")
+                    )
+                    if "/token?" in url:
+                        token_headers.append(authorization)
+                        if authorization == "Basic " + login or writer.called:
+                            return io.BytesIO(b'{"token":"fixture-session"}')
+                        raise urllib.error.HTTPError(
+                            url, HTTPStatus.FORBIDDEN, "Denied", Message(), None
+                        )
+                    if authorization is None:
+                        headers = Message()
+                        headers["WWW-Authenticate"] = (
+                            'Bearer realm="https://ghcr.io/token",service="ghcr.io"'
+                        )
+                        raise urllib.error.HTTPError(
+                            url, HTTPStatus.UNAUTHORIZED, "Challenge", headers, None
+                        )
+                    if writer.called:
+                        return io.BytesIO(content)
+                    raise urllib.error.HTTPError(
+                        url, HTTPStatus.NOT_FOUND, "Missing", Message(), None
+                    )
 
-        for change in (
-            {"event": "pull_request"},
-            {"head_sha": "4" * 40},
-            {"conclusion": "failure"},
-            {"id": 2},
+                with patch.object(publish.urllib.request, "urlopen", side_effect=exchange):
+                    publish.publish_image(Path("/fixture"), "ghcr.io/fixture/image", "rc", expected)
+                writer.assert_called_once()
+                self.assertEqual(token_headers, ["Basic " + login, None])
+
+    def test_retry_cannot_claim_a_private_manifest_is_public(self) -> None:
+        from tools.release import publish
+
+        content = b'{"fixture":true}'
+        expected = "sha256:" + hashlib.sha256(content).hexdigest()
+        with (
+            patch.object(publish, "manifest", side_effect=[content, None]),
+            patch.object(publish, "command") as writer,
+            self.assertRaises(ValueError),
         ):
-            with self.subTest(change=change), self.assertRaises(ValueError):
-                verify(data, dict(run, **change), jobs, security, data["release_source_sha"])
+            publish.publish_image(Path("/fixture"), "ghcr.io/fixture/image", "rc", expected)
+        writer.assert_not_called()
 
-        with self.assertRaises(ValueError):
-            verify(data, run, jobs[:-1], security, data["release_source_sha"])
+    def test_registry_challenge_cannot_send_credentials_to_the_other_registry(self) -> None:
+        from tools.release import publish
 
-        wrong = copy.deepcopy(security)
-        wrong["image_manifest_digests"]["api"] = "sha256:" + "9" * 64
-
-        with self.assertRaises(ValueError):
-            verify(data, run, jobs, wrong, data["release_source_sha"])
+        headers = Message()
+        headers["WWW-Authenticate"] = (
+            'Bearer realm="https://auth.docker.io/token",service="ghcr.io"'
+        )
+        challenge = urllib.error.HTTPError(
+            "https://ghcr.io", HTTPStatus.UNAUTHORIZED, "Challenge", headers, None
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "config.json").write_text(
+                json.dumps({"auths": {"ghcr.io": {"auth": "fixture"}}})
+            )
+            with (
+                patch.dict(os.environ, {"DOCKER_CONFIG": directory}),
+                patch.object(
+                    publish.urllib.request,
+                    "urlopen",
+                    side_effect=[
+                        challenge,
+                        io.BytesIO(b'{"token":"fixture"}'),
+                        io.BytesIO(b"data"),
+                    ],
+                ) as network,
+                self.assertRaises(ValueError),
+            ):
+                publish.registry_get("ghcr.io/fixture/image", "manifests", "rc", authenticated=True)
+            network.assert_called_once()
 
     def test_preparation_does_not_claim_pending_channels_are_published(self) -> None:
         data = inventory()

@@ -23,6 +23,13 @@ added when releases exist.
 
 ### Changed
 
+- Run tag-driven releases on GitHub Release publication or manual dispatch, build
+  RC images in parallel, and share the native image-build Action with PR CI.
+- Resolve release source qualification from the successful merged PR instead of
+  requiring a duplicate CI run on `main`; preserve stable GPU acceptance and
+  promotion of the accepted image manifests.
+- Run contributor CI only on pull requests instead of repeating it after each
+  push to `main`.
 - Centralize workflow settings in one local CI configuration Action; read Python,
   uv and native tool versions from project files instead of repeated literals.
 - Add Helm chart discovery keywords, SPDX license, OCI documentation and Artifact
@@ -43,8 +50,23 @@ added when releases exist.
 - Cache CI dependencies and PR image layers, parallelize tool installation and independent checks, and preserve cold main-build qualification.
 - Persist Go and C/CUDA compiler caches between image builds, select compile parallelism from available resources, and keep runtime layers reusable when OCI labels change.
 
+### Removed
+
+- Legacy main-push CI selection and inventory-only approval-commit paths from
+  release tooling; tag resolution now verifies the successful merged PR.
+- Custom YAML syntax restrictions, the Python Kubernetes-schema walker and its
+  unused schema downloads and jsonschema dependency.
+- Source-comment suppression checker and its tests; native GoSec and Hadolint
+  options expose findings to the existing centralized exception policy instead.
+- Exact-text assertion for generated BuildKit configuration.
+
 ### Fixed
 
+- Replace the security summary on CI retries so the aggregate cannot download
+  an earlier failed scan report.
+- Set both packaged chart image tags to the selected release version.
+- Authenticate first-publication collision checks and require anonymous image
+  read-back on retries as well as after uploads.
 - Respect cgroup v2 CPU quotas when automatically selecting image compilation parallelism, including fractional CPU limits.
 - Propagate failures from every command in Docker build pipelines using Bash with `pipefail` in both images.
 - Preserve string-valued Helm labels/selectors and reject cache paths overlapping configuration, transient or prepared mounts.

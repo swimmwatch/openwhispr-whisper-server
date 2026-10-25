@@ -2,9 +2,6 @@ name: CI
 
 'on':
   pull_request: null
-  push:
-    branches:
-    - main
 
 permissions: {}
 
@@ -126,7 +123,7 @@ jobs:
   chart:
     name: chart
     runs-on: *runner
-    timeout-minutes: &timeout30 30
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -152,16 +149,15 @@ jobs:
     - name: Cache verified tool downloads
       uses: ./.github/actions/cache-tools
 
-    - name: Install pinned chart tools and official API schemas
+    - name: Install pinned Helm tools
       run: |
-        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/chart-tools" --tools helm3 helm4 kubernetes-schemas --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/chart-tools" --tools helm3 helm4 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
 
-    - name: Run the real P06 Helm, schema, configuration and boundary matrix
+    - name: Run Helm lint and chart behavior tests
       env:
         P06_CHART_TESTS: '1'
         P06_HELM3: ${{ runner.temp }}/chart-tools/helm3
         P06_HELM4: ${{ runner.temp }}/chart-tools/helm4
-        P06_SCHEMA_DIR: ${{ runner.temp }}/chart-tools/schemas
         PYTHON: ${{ github.workspace }}/.venv/bin/python
       run: go test -vet=off ./tests/integration -run '^TestChart' -count=1 -parallel "$GOMAXPROCS"
 
@@ -197,87 +193,11 @@ jobs:
         cache: 'true'
         dev-dependencies: 'false'
 
-    - name: Set up isolated parallel Buildx
-      id: builder
-      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+    - name: Build and verify image
+      uses: ./.github/actions/build-image
       with:
-        version: ${{ env.CI_BUILDX_VERSION }}
-        name: whisper-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.role }}
-        driver: docker-container
-        driver-opts: image=${{ env.CI_BUILDKIT_IMAGE }}
-        buildkitd-flags: --root=/var/lib/buildkit
-        buildkitd-config-inline: |
-          [worker.oci]
-            max-parallelism = ${{ env.CI_BUILD_PARALLELISM }}
-        cache-binary: true
-        keep-state: false
-        cleanup: true
-
-    - name: Cache PR image layers
-      if: github.event_name == 'pull_request'
-      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
-      with:
-        path: ${{ env.CI_BUILD_CACHE_DIR }}
-        key: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-${{ hashFiles('containers/*.Dockerfile',
-          'containers/build-inputs.json', 'go.mod', 'go.sum', 'tools/versions.yaml') }}-${{ github.sha
-          }}
-        restore-keys: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.role }}-
-
-    - name: Prepare image export
-      run: mkdir -p "$RUNNER_TEMP/artifacts/$ROLE"
-
-    - name: Generate OCI labels and registry annotations
-      id: metadata
-      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
-      env:
-        DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-      with:
-        tags: type=sha,format=long
-        flavor: latest=false
-        labels: ${{ env.IMAGE_METADATA }}
-        annotations: ${{ env.IMAGE_METADATA }}
-
-    - name: Build GPU-free image with actual SBOM and provenance
-      id: image
-      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
-      env:
-        DOCKER_BUILD_SUMMARY: 'false'
-        DOCKER_BUILD_RECORD_UPLOAD: 'false'
-      with:
-        builder: ${{ steps.builder.outputs.name }}
-        context: .
-        file: containers/${{ matrix.role }}.Dockerfile
-        platforms: ${{ env.CI_IMAGE_PLATFORM }}
-        build-args: |
-          SOURCE_REVISION=${{ github.sha }}
-          APP_VERSION=${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.version'] }}
-        labels: ${{ steps.metadata.outputs.labels }}
-        annotations: ${{ steps.metadata.outputs.annotations }}
-        outputs: type=oci,dest=${{ runner.temp }}/artifacts/${{ matrix.role }}/image.tar
-        provenance: mode=max
-        attests: type=sbom,generator=${{ env.CI_SBOM_GENERATOR }}
-        push: false
-        no-cache: ${{ github.event_name != 'pull_request' }}
-        cache-from: ${{ github.event_name == 'pull_request' && format('type=local,src={0}',
-          env.CI_BUILD_CACHE_DIR) || '' }}
-        cache-to: ${{ github.event_name == 'pull_request' && format('type=local,dest={0},mode=max,compression=zstd,compression-level=3',
-          env.CI_BUILD_CACHE_NEXT_DIR) || '' }}
-
-    - name: Verify and record exported image identities
-      env:
-        IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-      run: |
-        qualification=()
-        if [ "$EVENT_NAME" != pull_request ]; then
-          qualification=(--cold)
-        fi
-        uv run --no-sync --no-dev python tools/release/artifacts.py record-image --output "$RUNNER_TEMP/artifacts/$ROLE" --source-sha "$GITHUB_SHA" --expected-digest "$IMAGE_DIGEST" "${qualification[@]}"
-
-    - name: Replace PR cache without accumulating old blobs
-      if: github.event_name == 'pull_request'
-      run: |
-        rm -rf "$CI_BUILD_CACHE_DIR"
-        mv "$CI_BUILD_CACHE_NEXT_DIR" "$CI_BUILD_CACHE_DIR"
+        role: ${{ matrix.role }}
+        source-sha: ${{ github.sha }}
 
     - uses: *upload_artifact
       with:
@@ -295,87 +215,16 @@ jobs:
         role:
         - api
         - backend
-    env:
-      ROLE: ${{ matrix.role }}
-      EVENT_NAME: ${{ github.event_name }}
-      IMAGE_METADATA: |
-        org.opencontainers.image.title=openwhispr-whisper-server-${{ matrix.role }}
-        org.opencontainers.image.description=${{ matrix.role == 'api' && 'Resident Whisper public API and bounded FFmpeg decoder' || 'Resident Whisper supervisor and unchanged CUDA native server' }}
-        org.opencontainers.image.authors=openwhispr-whisper-server contributors
-        org.opencontainers.image.vendor=openwhispr-whisper-server contributors
-        org.opencontainers.image.url=https://github.com/${{ github.repository }}
-        org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/${{ github.sha }}/docs/container-builds.md
-        org.opencontainers.image.source=https://github.com/${{ github.repository }}
-        org.opencontainers.image.version=0.0.0-dev+sha.${{ github.sha }}
-        org.opencontainers.image.revision=${{ github.sha }}
-        org.opencontainers.image.licenses=${{ matrix.role == 'api' && 'Apache-2.0 AND MIT AND BSD-3-Clause AND LGPL-2.1-or-later' || 'Apache-2.0 AND MIT AND BSD-3-Clause AND LicenseRef-NVIDIA-CUDA' }}
 
   image-runtime:
-    name: Image runtime and license checks
     needs:
     - chart
     - build
-    runs-on: *runner
-    timeout-minutes: *timeout30
     permissions:
       contents: read
-    steps:
-    - uses: *checkout
-      with:
-        persist-credentials: false
-
-    - name: Load shared CI configuration
-      uses: *ci_config
-
-    - name: Set up pinned Docker with OCI image store
-      uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
-      with:
-        version: ${{ env.CI_DOCKER_VERSION }}
-        set-host: 'true'
-        daemon-config: |
-          {"features":{"containerd-snapshotter":true}}
-
-    - name: Set up locked Python tooling
-      uses: ./.github/actions/setup-python
-      with:
-        cache: 'true'
-        dev-dependencies: 'false'
-
-    - uses: *setup_go
-      with:
-        go-version-file: go.mod
-        cache: true
-        cache-dependency-path: go.sum
-
-    - name: Cache verified tool downloads
-      uses: ./.github/actions/cache-tools
-
-    - uses: &download_artifact actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: '*'
-        path: ${{ runner.temp }}/artifacts
-
-    - name: Validate transferred OCI bytes and load the exact runtime images
-      run: |
-        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/artifacts"
-        docker load --input "$RUNNER_TEMP/artifacts/api/image.tar" &
-        api_load=$!
-        docker load --input "$RUNNER_TEMP/artifacts/backend/image.tar" &
-        backend_load=$!
-        load_status=0
-        wait "$api_load" || load_status=$?
-        wait "$backend_load" || load_status=$?
-        test "$load_status" -eq 0
-        for role in api backend; do
-          image_digest=$(jq -er '.manifest_digest' "$RUNNER_TEMP/artifacts/$role/image.json")
-          docker tag "$image_digest" "whisper-$role:local"
-        done
-
-    - name: Run the real P05 image, metadata, license and Compose checks without a GPU
-      env:
-        P05_IMAGE_TESTS: '1'
-        PYTHON: ${{ github.workspace }}/.venv/bin/python
-      run: go test -v -vet=off ./tests/integration -count=1 -parallel "$GOMAXPROCS"
+    uses: ./.github/workflows/image-runtime.yml
+    with:
+      source-sha: ${{ github.sha }}
 
   scan:
     name: Security scans
@@ -410,7 +259,7 @@ jobs:
     - name: Cache verified tool downloads
       uses: ./.github/actions/cache-tools
 
-    - uses: *download_artifact
+    - uses: &download_artifact actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         path: ${{ runner.temp }}/artifacts
 
@@ -454,6 +303,7 @@ jobs:
       uses: *upload_artifact
       with:
         name: security-summary
+        overwrite: true
         path: ${{ runner.temp }}/security.json
         if-no-files-found: error
         retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}

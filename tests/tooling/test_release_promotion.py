@@ -94,43 +94,6 @@ class PromotionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 prepare.equivalent(candidate, stable, helm, {"api": DIGEST, "backend": DIGEST})
 
-    def test_inventory_approval_commit_can_only_change_the_selected_inventory(self) -> None:
-        from tools.release.verify_ci import verify_inventory_revision
-
-        with tempfile.TemporaryDirectory(prefix="whisper-approval-test-") as td:
-            root = Path(td)
-
-            def git(*args: str) -> str:
-                result = subprocess.run(
-                    ["git", "-C", str(root), *args], capture_output=True, text=True, timeout=30
-                )
-
-                self.assertEqual(result.returncode, 0, "Isolated Git fixture failed")
-
-                return result.stdout.strip()
-
-            git("init", "--quiet")
-            git("config", "user.name", "Release Fixture")
-            git("config", "user.email", "fixture@example.invalid")
-            source = root / "main.go"
-            source.write_text("package main\n")
-            git("add", ".")
-            git("commit", "--quiet", "-m", "fixture: source revision")
-            artifact_sha = git("rev-parse", "HEAD")
-            inventory_path = Path("docs/releases/fixture.json")
-            (root / inventory_path).parent.mkdir(parents=True)
-            (root / inventory_path).write_text("{}\n")
-            git("add", ".")
-            git("commit", "--quiet", "-m", "fixture: inventory approval")
-            data = {"release_source_sha": artifact_sha}
-            verify_inventory_revision(data, inventory_path, git("rev-parse", "HEAD"), root)
-            source.write_text("package different\n")
-            git("add", ".")
-            git("commit", "--quiet", "-m", "fixture: unverified runtime change")
-
-            with self.assertRaises(ValueError):
-                verify_inventory_revision(data, inventory_path, git("rev-parse", "HEAD"), root)
-
     def test_stable_scan_binds_old_image_source_and_new_chart_source(self) -> None:
         from tools.security.run import input_binding
 

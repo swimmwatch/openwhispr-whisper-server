@@ -24,6 +24,8 @@ from tools.security.check_secrets import scan as source_secrets
 
 ROOT = Path(__file__).resolve().parents[2]
 HELM_SCAN_FLAGS = ["--helm-kube-version", "1.37.0", "--file-patterns", r"helm:.*\.json"]
+GOSEC_SCAN_FLAGS = ["-nosec", "-fmt=json"]
+HADOLINT_SCAN_FLAGS = ["--disable-ignore-pragma", "--format=json"]
 
 
 def validate_database_metadata(metadata: dict[str, Any], now: datetime | None = None) -> None:
@@ -75,30 +77,6 @@ def execute(command: list[str], cwd: Path = ROOT, timeout: int = 1200) -> tuple[
         stdout.seek(0)
 
         return process.returncode, stdout.read().decode("utf-8")
-
-
-def inline_policy(root: Path, exceptions: list[dict[str, Any]]) -> None:
-    approved = {(item["scanner"], item["rule"], item["path"]) for item in exceptions}
-    for folder in ("cmd", "internal", "containers"):
-        for path in (root / folder).rglob("*"):
-            if not path.is_file() or not (path.suffix == ".go" or path.suffix == ".Dockerfile"):
-                continue
-
-            relative = path.relative_to(root).as_posix()
-            for line in path.read_text().splitlines():
-                if "#nosec" in line:
-                    rules = re.findall(r"\bG\d{3}\b", line.split("#nosec", 1)[1].split("--", 1)[0])
-                    require(
-                        rules and all(("gosec", rule, relative) in approved for rule in rules),
-                        "Unapproved inline Go suppression",
-                    )
-
-                if "hadolint ignore=" in line:
-                    rules = line.split("hadolint ignore=", 1)[1].split()[0].split(",")
-                    require(
-                        all(("hadolint", rule, relative) in approved for rule in rules),
-                        "Unapproved inline Dockerfile suppression",
-                    )
 
 
 def input_binding(
@@ -228,7 +206,6 @@ def run(
     binding = input_binding(chart, builds, image_source_sha)
     exceptions = json.loads((ROOT / "tools/security/exceptions.json").read_bytes())
     check.validate_exceptions(exceptions)
-    inline_policy(ROOT, exceptions)
 
     versions = json.loads((ROOT / "tools/versions.yaml").read_bytes())["scanners"]
     for name, metadata in versions.items():
@@ -272,8 +249,7 @@ def run(
             "gosec",
             [
                 str(binaries / "gosec"),
-                "-track-suppressions",
-                "-fmt=json",
+                *GOSEC_SCAN_FLAGS,
                 "./cmd/...",
                 "./internal/...",
             ],
@@ -283,7 +259,11 @@ def run(
             session.add(
                 "dockerfile-" + role,
                 "hadolint",
-                [str(binaries / "hadolint"), "--format=json", "containers/" + role + ".Dockerfile"],
+                [
+                    str(binaries / "hadolint"),
+                    *HADOLINT_SCAN_FLAGS,
+                    "containers/" + role + ".Dockerfile",
+                ],
             )
 
         session.add(

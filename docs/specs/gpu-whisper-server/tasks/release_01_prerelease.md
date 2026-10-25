@@ -9,7 +9,12 @@ Requirements: REQ-015, REQ-026, REQ-027, REQ-028.
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: planned; technically agreed (2026-10-22), not executed. Exact agreement below checked ready against the pinned Approved/reviewed specification. A separate incremental invocation, passing dependencies and any scoped external authority remain required. Preserve completed work; recheck source and agreement freshness before execution and completion.
+Status: in progress (2026-10-25). The user explicitly authorized the current
+changes, branch/commit/PR/merge after successful CI, publisher setup and
+`v0.1.0-rc.1` publication. Pinned specification check passed and the exact R01
+agreement below remained ready. No release has been published. The owner must
+provide the protected Docker Hub token; PR CI and all release checks remain
+required. GPU acceptance and stable publication are outside this invocation.
 
 All commands below run from the project root and use rtk. Named scripts/tests are **to create**, unless explicitly identified as existing. Write/run the discriminating check before the change; record relevant RED, correct implementation to GREEN, and PROVE newly written absence/wiring assertions with one reversible mutation when RED did not exercise them. A missing file/tool alone is not semantic RED. Restore all probes/mutations before final checks.
 

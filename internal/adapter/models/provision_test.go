@@ -90,7 +90,7 @@ func TestOfflineCache(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		http.Error(w, "unexpected request", 500)
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
 	}))
 	defer server.Close()
 

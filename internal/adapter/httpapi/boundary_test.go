@@ -101,13 +101,13 @@ func TestReadinessReasonsAndAdmissionDenial(t *testing.T) {
 			if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil {
 				t.Fatal(err)
 			}
-			if w.Code != 503 || len(health) != 2 || health["status"] != "not_ready" || health["reason"] != test.reason {
+			if w.Code != http.StatusServiceUnavailable || len(health) != 2 || health["status"] != "not_ready" || health["reason"] != test.reason {
 				t.Fatalf("readiness=%d %s", w.Code, w.Body.String())
 			}
 
 			w = httptest.NewRecorder()
 			e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, []byte("audio")))
-			if w.Code < 400 || stub.calls.Load() != 0 || strings.Contains(w.Body.String(), "PRIVATE") {
+			if w.Code < http.StatusBadRequest || stub.calls.Load() != 0 || strings.Contains(w.Body.String(), "PRIVATE") {
 				t.Fatal("unready service admitted work or exposed a cause")
 			}
 		})
@@ -227,7 +227,7 @@ func TestUploadRootOwnershipAndClose(t *testing.T) {
 	h.Register(e)
 	w := httptest.NewRecorder()
 	e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, []byte("audio")))
-	if w.Code != 503 ||
+	if w.Code != http.StatusServiceUnavailable ||
 		!strings.Contains(w.Body.String(), "shutting_down") ||
 		service.ready.Load() != 0 ||
 		service.calls.Load() != 0 {
@@ -347,10 +347,10 @@ func TestMiddlewareRejectsInvalidConfigurationAndPeer(t *testing.T) {
 		e.POST(transcriptionsPath, func(c *echo.Context) error {
 			t.Error("invalid client identity reached the handler")
 
-			return c.NoContent(200)
+			return c.NoContent(http.StatusOK)
 		})
 		w := send(e, peer, transcriptionsPath, nil)
-		if w.Code != 400 || len(store.keys) != 0 {
+		if w.Code != http.StatusBadRequest || len(store.keys) != 0 {
 			t.Fatal("invalid client identity reached the rate-limit store")
 		}
 	}

@@ -116,7 +116,7 @@ func TestTranscriptionFields(t *testing.T) {
 		fields [][2]string
 		code   int
 	}{
-		{"defaults", [][2]string{{"model", "base"}}, 200},
+		{"defaults", [][2]string{{"model", "base"}}, http.StatusOK},
 		{
 			"names",
 			[][2]string{
@@ -127,22 +127,22 @@ func TestTranscriptionFields(t *testing.T) {
 				{"stream", "false"},
 				{"response_format", "text"},
 			},
-			200,
+			http.StatusOK,
 		},
-		{"missing-model", nil, 400},
-		{"other-model", [][2]string{{"model", "other"}}, 404},
-		{"path-model", [][2]string{{"model", "../PRIVATE"}}, 400},
-		{"duplicate", [][2]string{{"model", "base"}, {"model", "base"}}, 400},
-		{"unknown", [][2]string{{"model", "base"}, {"PRIVATE", "x"}}, 400},
-		{"language", [][2]string{{"model", "base"}, {"language", "PRIVATE"}}, 400},
-		{"empty-language", [][2]string{{"model", "base"}, {"language", ""}}, 400},
-		{"temperature", [][2]string{{"model", "base"}, {"temperature", "NaN"}}, 400},
-		{"temperature-range", [][2]string{{"model", "base"}, {"temperature", "1.01"}}, 400},
-		{"utf8", [][2]string{{"model", "base"}, {"prompt", string([]byte{255})}}, 400},
-		{"prompt-cap", [][2]string{{"model", "base"}, {"prompt", strings.Repeat("x", 33)}}, 400},
-		{"stream", [][2]string{{"model", "base"}, {"stream", "true"}}, 400},
-		{"stream-number", [][2]string{{"model", "base"}, {"stream", "0"}}, 400},
-		{"format", [][2]string{{"model", "base"}, {"response_format", "vtt"}}, 400},
+		{"missing-model", nil, http.StatusBadRequest},
+		{"other-model", [][2]string{{"model", "other"}}, http.StatusNotFound},
+		{"path-model", [][2]string{{"model", "../PRIVATE"}}, http.StatusBadRequest},
+		{"duplicate", [][2]string{{"model", "base"}, {"model", "base"}}, http.StatusBadRequest},
+		{"unknown", [][2]string{{"model", "base"}, {"PRIVATE", "x"}}, http.StatusBadRequest},
+		{"language", [][2]string{{"model", "base"}, {"language", "PRIVATE"}}, http.StatusBadRequest},
+		{"empty-language", [][2]string{{"model", "base"}, {"language", ""}}, http.StatusBadRequest},
+		{"temperature", [][2]string{{"model", "base"}, {"temperature", "NaN"}}, http.StatusBadRequest},
+		{"temperature-range", [][2]string{{"model", "base"}, {"temperature", "1.01"}}, http.StatusBadRequest},
+		{"utf8", [][2]string{{"model", "base"}, {"prompt", string([]byte{255})}}, http.StatusBadRequest},
+		{"prompt-cap", [][2]string{{"model", "base"}, {"prompt", strings.Repeat("x", 33)}}, http.StatusBadRequest},
+		{"stream", [][2]string{{"model", "base"}, {"stream", "true"}}, http.StatusBadRequest},
+		{"stream-number", [][2]string{{"model", "base"}, {"stream", "0"}}, http.StatusBadRequest},
+		{"format", [][2]string{{"model", "base"}, {"response_format", "vtt"}}, http.StatusBadRequest},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s := &transcriptionStub{}
@@ -177,10 +177,10 @@ func TestTranscriptionFields(t *testing.T) {
 			if w.Header().Get("X-Request-ID") != "owned-request-1" {
 				t.Error("response lost ID")
 			}
-			if test.code != 200 && (s.calls.Load() != 0 || strings.Contains(w.Body.String(), "PRIVATE")) {
+			if test.code != http.StatusOK && (s.calls.Load() != 0 || strings.Contains(w.Body.String(), "PRIVATE")) {
 				t.Error("invalid input admitted or private data exposed")
 			}
-			if test.code == 200 && s.calls.Load() != 1 {
+			if test.code == http.StatusOK && s.calls.Load() != 1 {
 				t.Error("valid input was not admitted once")
 			}
 			if test.name == "names" &&
@@ -224,7 +224,7 @@ func TestTranscriptionMiddlewareWiring(t *testing.T) {
 		h.Register(e)
 		w := httptest.NewRecorder()
 		e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, []byte("audio")))
-		if w.Code != 200 {
+		if w.Code != http.StatusOK {
 			t.Fatal("valid rate-limited route failed", w.Code)
 		}
 
@@ -236,7 +236,7 @@ func TestTranscriptionMiddlewareWiring(t *testing.T) {
 		request.Header.Set("X-Request-ID", "invalid id")
 		w = httptest.NewRecorder()
 		e.ServeHTTP(w, request)
-		if w.Code != 429 ||
+		if w.Code != http.StatusTooManyRequests ||
 			body.reads.Load() != 0 ||
 			s.calls.Load() != 1 ||
 			s.ready.Load() != before ||
@@ -248,14 +248,14 @@ func TestTranscriptionMiddlewareWiring(t *testing.T) {
 		for _, path := range []string{"/health/live", "/health/ready"} {
 			w = httptest.NewRecorder()
 			e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
-			if w.Code != 200 || w.Header().Get("X-Request-ID") == "" {
+			if w.Code != http.StatusOK || w.Header().Get("X-Request-ID") == "" {
 				t.Fatal("probe was limited or lost correlation")
 			}
 		}
 		time.Sleep(time.Second)
 		w = httptest.NewRecorder()
 		e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, []byte("audio")))
-		if w.Code != 200 || s.calls.Load() != 2 {
+		if w.Code != http.StatusOK || s.calls.Load() != 2 {
 			t.Fatal("real route quota did not refill")
 		}
 	})
@@ -281,9 +281,9 @@ func TestTranscriptionMiddlewareWiring(t *testing.T) {
 		request.Body = body
 		w := httptest.NewRecorder()
 		e.ServeHTTP(w, request)
-		want := 429
+		want := http.StatusTooManyRequests
 		if storeErr != nil {
-			want = 503
+			want = http.StatusServiceUnavailable
 		}
 		if w.Code != want || body.reads.Load() != 0 || s.calls.Load() != 0 || s.ready.Load() != 0 {
 			t.Error("limiter store failure bypassed real admission boundary")
@@ -300,9 +300,9 @@ func TestHTTPUploadBoundsAndIsolation(t *testing.T) {
 	for _, size := range []int{int(opts.AudioBytes), int(opts.AudioBytes) + 1} {
 		w := httptest.NewRecorder()
 		e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, make([]byte, size)))
-		want := 200
+		want := http.StatusOK
 		if size > int(opts.AudioBytes) {
-			want = 413
+			want = http.StatusRequestEntityTooLarge
 		}
 		if w.Code != want {
 			t.Fatalf("payload cap status=%d want=%d", w.Code, want)
@@ -312,7 +312,7 @@ func TestHTTPUploadBoundsAndIsolation(t *testing.T) {
 	s.health.Multilingual = false
 	w := httptest.NewRecorder()
 	e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}, {"language", "ru"}}, []byte("audio")))
-	if w.Code != 400 || s.calls.Load() != 1 {
+	if w.Code != http.StatusBadRequest || s.calls.Load() != 1 {
 		t.Fatal("English-only model admitted an incompatible language")
 	}
 
@@ -325,7 +325,7 @@ func TestHTTPUploadBoundsAndIsolation(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, []byte("audio")))
-	if w.Code != 200 {
+	if w.Code != http.StatusOK {
 		t.Fatal("English-only auto default rejected")
 	}
 
@@ -333,7 +333,7 @@ func TestHTTPUploadBoundsAndIsolation(t *testing.T) {
 	s.admit = nil
 	w = httptest.NewRecorder()
 	e.ServeHTTP(w, formRequest(t, [][2]string{{"model", "base"}}, []byte("audio")))
-	if w.Code != 500 || strings.Contains(w.Body.String(), "PRIVATE") {
+	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "PRIVATE") {
 		t.Fatal("unknown port failure exposed its cause")
 	}
 }
@@ -376,7 +376,7 @@ func TestPublicRouteAbsence(t *testing.T) {
 		for _, method := range []string{http.MethodPost, http.MethodGet} {
 			w := httptest.NewRecorder()
 			e.ServeHTTP(w, httptest.NewRequest(method, path, nil))
-			if w.Code != 404 || w.Header().Get("X-Request-ID") == "" {
+			if w.Code != http.StatusNotFound || w.Header().Get("X-Request-ID") == "" {
 				t.Fatalf("deferred route exposed: %s %s: %d", method, path, w.Code)
 			}
 		}
@@ -431,7 +431,7 @@ func TestTranscriptionStagingBounds(t *testing.T) {
 	r.Body = body
 	w := httptest.NewRecorder()
 	e.ServeHTTP(w, r)
-	if w.Code != 429 || body.reads.Load() != 0 || s.calls.Load() != 1 {
+	if w.Code != http.StatusTooManyRequests || body.reads.Load() != 0 || s.calls.Load() != 1 {
 		t.Error("staging overflow read input or admitted work")
 	}
 }

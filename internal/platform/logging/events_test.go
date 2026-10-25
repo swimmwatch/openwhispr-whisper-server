@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"testing"
 )
 
@@ -27,7 +28,7 @@ func TestEventAllowlistDropsUnknownEventsAndRequestFields(t *testing.T) {
 		Name:       BackendFailed,
 		Method:     "POST",
 		Route:      "/inference",
-		Status:     503,
+		Status:     http.StatusServiceUnavailable,
 		DurationMS: 42,
 		ErrorCode:  "backend_unavailable",
 	})

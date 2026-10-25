@@ -60,17 +60,17 @@ func TestHealthRejectsInconsistentPrivateState(t *testing.T) {
 		status int
 		kind   domain.FailureKind
 	}{
-		{"missing-field", "multilingual", nil, 200, domain.BackendUnavailable},
-		{"unknown-field", "private", "PRIVATE", 200, domain.BackendUnavailable},
-		{"unknown-state", "status", "PRIVATE", 200, domain.BackendUnavailable},
-		{"protocol", "protocol_version", "2", 200, domain.NotReady},
-		{"model", "model", "small", 200, domain.NotReady},
-		{"ready-without-cuda", "cuda_ready", false, 200, domain.BackendUnavailable},
-		{"ready-without-generation", "process_generation", "", 200, domain.BackendUnavailable},
-		{"unsafe-generation", "process_generation", "PRIVATE generation", 200, domain.BackendUnavailable},
-		{"ready-http-unavailable", "", nil, 503, domain.BackendUnavailable},
-		{"starting-http-ok", "status", "starting", 200, domain.BackendUnavailable},
-		{"unrecognized-http-status", "", nil, 502, domain.BackendUnavailable},
+		{"missing-field", "multilingual", nil, http.StatusOK, domain.BackendUnavailable},
+		{"unknown-field", "private", "PRIVATE", http.StatusOK, domain.BackendUnavailable},
+		{"unknown-state", "status", "PRIVATE", http.StatusOK, domain.BackendUnavailable},
+		{"protocol", "protocol_version", "2", http.StatusOK, domain.NotReady},
+		{"model", "model", "small", http.StatusOK, domain.NotReady},
+		{"ready-without-cuda", "cuda_ready", false, http.StatusOK, domain.BackendUnavailable},
+		{"ready-without-generation", "process_generation", "", http.StatusOK, domain.BackendUnavailable},
+		{"unsafe-generation", "process_generation", "PRIVATE generation", http.StatusOK, domain.BackendUnavailable},
+		{"ready-http-unavailable", "", nil, http.StatusServiceUnavailable, domain.BackendUnavailable},
+		{"starting-http-ok", "status", "starting", http.StatusOK, domain.BackendUnavailable},
+		{"unrecognized-http-status", "", nil, http.StatusBadGateway, domain.BackendUnavailable},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			wire := validHealth()
@@ -193,7 +193,7 @@ func TestResponseReadFailureClosesBody(t *testing.T) {
 						data, _ := json.Marshal(validHealth())
 
 						return &http.Response{
-							StatusCode: 200,
+							StatusCode: http.StatusOK,
 							Body:       io.NopCloser(bytes.NewReader(data)),
 						}, nil
 					}
@@ -202,7 +202,7 @@ func TestResponseReadFailureClosesBody(t *testing.T) {
 					}
 
 					return &http.Response{
-						StatusCode: 200,
+						StatusCode: http.StatusOK,
 						Body:       body,
 					}, nil
 				})}
