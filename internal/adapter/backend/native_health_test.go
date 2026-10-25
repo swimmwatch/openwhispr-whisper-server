@@ -120,42 +120,42 @@ func TestNativeHealthValidation(t *testing.T) {
 		{
 			name: "status",
 			body: `{"status":"ok"}`,
-			code: 503,
+			code: http.StatusServiceUnavailable,
 		},
 		{
 			name: "malformed",
 			body: "PRIVATE health body",
-			code: 200,
+			code: http.StatusOK,
 		},
 		{
 			name: "not-loaded",
 			body: `{"status":"loading"}`,
-			code: 200,
+			code: http.StatusOK,
 		},
 		{
 			name: "oversize",
 			body: strings.Repeat("x", maxNativeHealthBytes+1),
-			code: 200,
+			code: http.StatusOK,
 		},
 		{
 			name: "interrupted",
 			body: `{"status":"ok"}`,
-			code: 200,
+			code: http.StatusOK,
 		},
 		{
 			name: "gpu-replaced",
 			body: `{"status":"ok"}`,
-			code: 200,
+			code: http.StatusOK,
 		},
 		{
 			name: "child-exited",
 			body: `{"status":"ok"}`,
-			code: 200,
+			code: http.StatusOK,
 		},
 		{
 			name: "ready",
 			body: `{"status":"ok"}`,
-			code: 200,
+			code: http.StatusOK,
 		},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {

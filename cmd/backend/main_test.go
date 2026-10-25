@@ -255,7 +255,7 @@ func TestCommandProcess(t *testing.T) {
 						}
 						decodeErr := json.NewDecoder(response.Body).Decode(&health)
 						_ = response.Body.Close()
-						if response.StatusCode == 200 {
+						if response.StatusCode == http.StatusOK {
 							fingerprint, _ := config.CanonicalFingerprint(c)
 							if decodeErr != nil || health.Model != c.Models.Served || health.Fingerprint != fingerprint || !health.CUDAReady {
 								t.Fatal("command did not wire the prepared model/fingerprint/GPU")

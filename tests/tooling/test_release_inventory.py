@@ -136,3 +136,19 @@ class ReleaseInventoryTests(unittest.TestCase):
             metadata = yaml.safe_load((output / "extracted/whisper-server/Chart.yaml").read_bytes())
             self.assertEqual(metadata["version"], "0.1.0-rc.7")
             self.assertEqual(metadata["appVersion"], "0.1.0-rc.7")
+            resources = yaml.safe_load_all(
+                (output / "rendered/defaults/manifest.yaml").read_bytes()
+            )
+            images = {
+                container["image"]
+                for resource in resources
+                if resource and resource["kind"] == "StatefulSet"
+                for container in resource["spec"]["template"]["spec"]["containers"]
+            }
+            self.assertEqual(
+                images,
+                {
+                    f"ghcr.io/swimmwatch/openwhispr-whisper-server-{role}:0.1.0-rc.7"
+                    for role in ("api", "backend")
+                },
+            )

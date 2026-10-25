@@ -103,6 +103,21 @@ documentation update, not following an unversioned latest page:
 
 Contributor examples are in [CONTRIBUTING.md](CONTRIBUTING.md#commit-messages-and-release-records).
 
+## HTTP status constants
+
+- Use named standard-library or framework constants for HTTP status codes in
+  production code, tests, fixtures and tooling: `net/http.Status...` in Go and
+  `http.HTTPStatus...` in Python. Do not use bare numeric codes or duplicate the
+  standard constants in project-local aliases.
+- Derive textual status expectations from those constants when a tool returns
+  numeric HTTP codes as strings. Keep required wire-format literals in protocol
+  schemas and documentation. For languages without standard HTTP constants, use
+  one clearly named constant at the narrowest owning boundary.
+- Keep protocol-range bounds named when no standard constant exists. Do not
+  confuse HTTP statuses with process exit codes, timeouts, sizes or port numbers.
+- Use normal behavior tests and existing linters to verify changes; do not add
+  source-scanning tests or custom checkers for this rule.
+
 ## Go architecture
 
 The project boundaries and selected packages are authoritative in

@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -57,91 +59,88 @@ def command(args: Sequence[str | Path]) -> bytes:
     return result.stdout
 
 
-def registry_get(repository: str, category: str, reference: str) -> bytes | None:
+def registry_get(
+    repository: str, category: str, reference: str, *, authenticated: bool = False
+) -> bytes | None:
     host, path = repository.split("/", 1)
     require(host in ("ghcr.io", "docker.io"), "Unsupported publication registry")
-
     endpoint = "registry-1.docker.io" if host == "docker.io" else host
-    url = (
-        "https://"
-        + endpoint
-        + "/v2/"
-        + path
-        + "/"
-        + category
-        + "/"
-        + urllib.parse.quote(reference, safe=":")
-    )
+    url = f"https://{endpoint}/v2/{path}/{category}/{urllib.parse.quote(reference, safe=':')}"
     request = urllib.request.Request(url, headers={"Accept": ACCEPT})
-
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             return response.read()
     except urllib.error.HTTPError as error:
-        if error.code == 404:
+        error.close()
+        if error.code == HTTPStatus.NOT_FOUND:
             return None
-
-        require(error.code == 401, "Registry read failed")
-
+        require(error.code == HTTPStatus.UNAUTHORIZED, "Registry read failed")
         challenge = error.headers.get("WWW-Authenticate", "")
 
     fields = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
     realm = fields.get("realm", "")
     require(
-        urllib.parse.urlsplit(realm).netloc in ("ghcr.io", "auth.docker.io")
+        urllib.parse.urlsplit(realm).netloc
+        == ("auth.docker.io" if host == "docker.io" else "ghcr.io")
         and realm.startswith("https://"),
         "Unsupported registry authentication realm",
     )
-
     query = urllib.parse.urlencode(
         {"service": fields.get("service", ""), "scope": "repository:" + path + ":pull"}
     )
-
-    with urllib.request.urlopen(realm + "?" + query, timeout=120) as response:
-        credentials = json.load(response)
+    token_request = urllib.request.Request(realm + "?" + query)
+    if authenticated:
+        directory = os.environ.get("DOCKER_CONFIG")
+        require(bool(directory), "Task-local registry authentication is required")
+        config = json.loads((Path(cast(str, directory)) / "config.json").read_bytes())
+        server = "https://index.docker.io/v1/" if host == "docker.io" else host
+        login = config.get("auths", {}).get(server, {}).get("auth")
+        require(isinstance(login, str) and bool(login), "Registry login is unavailable")
+        token_request.add_header("Authorization", "Basic " + login)
+    try:
+        with urllib.request.urlopen(token_request, timeout=120) as response:
+            credentials = json.load(response)
+    except urllib.error.HTTPError as error:
+        error.close()
+        raise ValueError("Registry token is unavailable") from None
 
     token = credentials.get("token", credentials.get("access_token"))
-    require(isinstance(token, str) and token, "Anonymous registry token unavailable")
+    require(isinstance(token, str) and token, "Registry token is unavailable")
     request.add_header("Authorization", "Bearer " + token)
-
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             return response.read()
     except urllib.error.HTTPError as error:
-        if error.code == 404:
+        error.close()
+        if error.code == HTTPStatus.NOT_FOUND:
             return None
+        raise ValueError("Registry read failed") from None
 
-        raise ValueError("Anonymous registry read failed") from None
 
-
-def manifest(repository: str, reference: str) -> bytes | None:
-    return registry_get(repository, "manifests", reference)
+def manifest(repository: str, reference: str, *, authenticated: bool = False) -> bytes | None:
+    return registry_get(repository, "manifests", reference, authenticated=authenticated)
 
 
 def publish_image(layout: Path, repository: str, version: str, expected: str) -> None:
     digest(expected)
-
-    existing = manifest(repository, version)
+    existing = manifest(repository, version, authenticated=True)
     if existing is not None:
         require(
             "sha256:" + hashlib.sha256(existing).hexdigest() == expected,
             "Immutable image version collision",
         )
-
-        return
-
-    command(
-        [
-            "buildx",
-            "imagetools",
-            "create",
-            "--prefer-index=false",
-            "--tag",
-            repository + ":" + version,
-            "oci-layout://" + str(layout.resolve()) + "@" + expected,
-        ]
-    )
-
+    else:
+        command(
+            [
+                "buildx",
+                "imagetools",
+                "create",
+                "--prefer-index=false",
+                "--tag",
+                repository + ":" + version,
+                "oci-layout://" + str(layout.resolve()) + "@" + expected,
+            ]
+        )
     observed = manifest(repository, version)
     require(
         observed is not None and "sha256:" + hashlib.sha256(observed).hexdigest() == expected,
@@ -157,7 +156,7 @@ def publish_chart(
         "Chart source identity mismatch",
     )
 
-    existing = manifest(CHART, version)
+    existing = manifest(CHART, version, authenticated=True)
     if existing is None:
         command([helm, "push", archive, "oci://ghcr.io/swimmwatch/charts"])
 

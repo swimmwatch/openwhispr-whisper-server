@@ -256,6 +256,8 @@ The jobs are:
    `build-image` Action uses isolated Buildx builders, a cold build, OCI exports,
    SHA-pinned Docker Actions, and real SBOM/provenance. Stable skips rebuilding.
 3. `chart` packages the version from the tag and renders that same archive.
+   Both default image tags in the packaged chart use that release version;
+   contributor defaults in the source chart remain unchanged.
 4. `image-runtime` verifies the newly built RC images using the same reusable
    runtime/license/Compose harness as PR CI. Stable reuses the accepted images.
 5. `publish` selects the exact artifacts and performs fresh security checks
@@ -317,6 +319,10 @@ active publication is never cancelled for another version. Python/uv versions,
 worker budgets, tool checksums and cache settings remain centralized in the
 existing project configuration. Registry authentication uses native Actions and
 task-local credential directories, with unconditional cleanup.
+Immutable-version collision checks use the task-local registry login, including
+before a package exists. Completion and retries still require anonymous
+read-back. New GHCR packages must be made public in their package settings
+before that gate can pass; private access never qualifies publication.
 
 Retry failed jobs in the same workflow run to reuse the exact built artifacts.
 A full rebuild can produce different attestations or package bytes and cannot

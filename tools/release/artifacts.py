@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -13,6 +14,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -233,10 +236,19 @@ def chart(output: Path, helm: str | Path, source_sha: str, version: str | None =
             "backend": {"runtimeClassName": "nvidia"},
         },
     }
-    package: list[str | Path] = [helm, "package", "charts/whisper-server", "--destination", output]
-    if version is not None:
-        package.extend(["--version", version, "--app-version", version])
-    command(package)
+    with tempfile.TemporaryDirectory(prefix="whisper-release-chart-") as temporary:
+        chart_source = ROOT / "charts/whisper-server"
+        if version is not None:
+            chart_source = Path(shutil.copytree(chart_source, Path(temporary) / "whisper-server"))
+            values_path = chart_source / "values.yaml"
+            values = yaml.safe_load(values_path.read_bytes())
+            for role in ("api", "backend"):
+                values["images"][role]["tag"] = version
+            values_path.write_text(yaml.safe_dump(values, sort_keys=False))
+        package: list[str | Path] = [helm, "package", chart_source, "--destination", output]
+        if version is not None:
+            package.extend(["--version", version, "--app-version", version])
+        command(package)
     archives = list(output.glob("*.tgz"))
     require(len(archives) == 1, "Expected one chart archive")
     extract(archives[0], output / "extracted")

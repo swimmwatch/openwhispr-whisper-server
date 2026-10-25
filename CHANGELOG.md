@@ -62,6 +62,9 @@ added when releases exist.
 
 ### Fixed
 
+- Set both packaged chart image tags to the selected release version.
+- Authenticate first-publication collision checks and require anonymous image
+  read-back on retries as well as after uploads.
 - Respect cgroup v2 CPU quotas when automatically selecting image compilation parallelism, including fractional CPU limits.
 - Propagate failures from every command in Docker build pipelines using Bash with `pipefail` in both images.
 - Preserve string-valued Helm labels/selectors and reject cache paths overlapping configuration, transient or prepared mounts.

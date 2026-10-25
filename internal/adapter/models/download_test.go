@@ -31,14 +31,14 @@ func TestDownloadFailures(t *testing.T) {
 		interrupted bool
 		status      int
 	}{
-		{name: "success", response: data, size: int64(len(data)), status: 200},
-		{name: "checksum", response: append(modelBytes(51865), 'x'), status: 200},
-		{name: "short-size", response: data, size: int64(len(data) + 1), status: 200},
-		{name: "long-size", response: data, size: int64(len(data) - 1), status: 200},
-		{name: "overflow-safe-size", response: data, size: math.MaxInt64, status: 200},
-		{name: "header", response: []byte("PRIVATE invalid header"), status: 200},
-		{name: "interrupted", response: data[:50], interrupted: true, status: 200},
-		{name: "status", status: 503},
+		{name: "success", response: data, size: int64(len(data)), status: http.StatusOK},
+		{name: "checksum", response: append(modelBytes(51865), 'x'), status: http.StatusOK},
+		{name: "short-size", response: data, size: int64(len(data) + 1), status: http.StatusOK},
+		{name: "long-size", response: data, size: int64(len(data) - 1), status: http.StatusOK},
+		{name: "overflow-safe-size", response: data, size: math.MaxInt64, status: http.StatusOK},
+		{name: "header", response: []byte("PRIVATE invalid header"), status: http.StatusOK},
+		{name: "interrupted", response: data[:50], interrupted: true, status: http.StatusOK},
+		{name: "status", status: http.StatusServiceUnavailable},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			var count atomic.Int32
@@ -137,18 +137,18 @@ func TestDownloadRedirects(t *testing.T) {
 		count.Add(1)
 		switch r.URL.Path {
 		case "/ok":
-			http.Redirect(w, r, "/target", 302)
+			http.Redirect(w, r, "/target", http.StatusFound)
 		case "/target":
 			if r.Header.Get("Cookie") != "" {
 				t.Error("cookies sent")
 			}
 			_, _ = w.Write(data)
 		case "/downgrade":
-			http.Redirect(w, r, plain.URL, 302)
+			http.Redirect(w, r, plain.URL, http.StatusFound)
 		case "/credentials":
-			http.Redirect(w, r, "https://PRIVATE:SECRET@"+r.Host+"/target", 302)
+			http.Redirect(w, r, "https://PRIVATE:SECRET@"+r.Host+"/target", http.StatusFound)
 		case "/loop":
-			http.Redirect(w, r, "/loop", 302)
+			http.Redirect(w, r, "/loop", http.StatusFound)
 		}
 	}))
 	defer server.Close()
@@ -220,7 +220,7 @@ func TestProvisionCancellation(t *testing.T) {
 	var count atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count.Add(1)
-		w.WriteHeader(503)
+		w.WriteHeader(http.StatusServiceUnavailable)
 
 		cancel()
 	}))
@@ -271,7 +271,7 @@ func TestProvisionClientOwnership(t *testing.T) {
 			t.Error("caller cookies sent")
 		}
 		return &http.Response{
-			StatusCode: 200,
+			StatusCode: http.StatusOK,
 			Body:       trackedBody{strings.NewReader(string(data)), &closed},
 			Header:     make(http.Header),
 			Request:    r,
@@ -294,7 +294,7 @@ func TestProvisionClientOwnership(t *testing.T) {
 	// Non-success responses must be closed too.
 	client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{
-			StatusCode: 503,
+			StatusCode: http.StatusServiceUnavailable,
 			Body:       trackedBody{strings.NewReader("PRIVATE response"), &closed},
 			Header:     make(http.Header),
 			Request:    r,
@@ -354,7 +354,7 @@ func TestProvisionRetryDelayCancellation(t *testing.T) {
 		client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			requests.Add(1)
 			return &http.Response{
-				StatusCode: 503,
+				StatusCode: http.StatusServiceUnavailable,
 				Body:       io.NopCloser(strings.NewReader("")),
 				Header:     make(http.Header),
 				Request:    r,
@@ -412,7 +412,7 @@ func TestProvisionOwnedCollections(t *testing.T) {
 			body = extra
 		}
 		return &http.Response{
-			StatusCode: 200,
+			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(string(body))),
 			Header:     make(http.Header),
 			Request:    r,
@@ -455,7 +455,7 @@ func TestProvisionTotalDeadline(t *testing.T) {
 				body = extra
 			}
 			return &http.Response{
-				StatusCode: 200,
+				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(string(body))),
 				Header:     make(http.Header),
 				Request:    r,

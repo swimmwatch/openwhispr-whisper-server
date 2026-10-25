@@ -26,48 +26,48 @@ func TestNativeResponseValidation(t *testing.T) {
 	}{
 		{
 			name:   "empty-text",
-			status: 200,
+			status: http.StatusOK,
 			body:   `{"text":""}`,
 			valid:  true,
 		},
 		{
 			name:   "status",
-			status: 503,
+			status: http.StatusServiceUnavailable,
 			body:   "PRIVATE native failure",
 		},
 		{
 			name:   "malformed",
-			status: 200,
+			status: http.StatusOK,
 			body:   "PRIVATE native failure",
 		},
 		{
 			name:   "missing-text",
-			status: 200,
+			status: http.StatusOK,
 			body:   `{}`,
 		},
 		{
 			name:   "null-text",
-			status: 200,
+			status: http.StatusOK,
 			body:   `{"text":null}`,
 		},
 		{
 			name:   "wrong-text-type",
-			status: 200,
+			status: http.StatusOK,
 			body:   `{"text":123}`,
 		},
 		{
 			name:   "invalid-utf8",
-			status: 200,
+			status: http.StatusOK,
 			body:   "{\"text\":\"\xff\"}",
 		},
 		{
 			name:   "oversize",
-			status: 200,
+			status: http.StatusOK,
 			body:   `{"text":"` + strings.Repeat("x", 128) + `"}`,
 		},
 		{
 			name:   "interrupted",
-			status: 200,
+			status: http.StatusOK,
 			body:   `{"text":"ok"}`,
 			short:  true,
 		},

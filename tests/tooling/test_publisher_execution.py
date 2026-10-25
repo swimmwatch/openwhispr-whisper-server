@@ -11,6 +11,7 @@ import unittest
 import urllib.error
 import urllib.request
 from datetime import datetime
+from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import patch
 
@@ -84,7 +85,7 @@ class ActualPublisherTests(unittest.TestCase):
         repository = address + "/fixture"
         base = "http://" + address + "/v2/"
 
-        def read_manifest(repo: str, version: str) -> bytes | None:
+        def read_manifest(repo: str, version: str, *, authenticated: bool = False) -> bytes | None:
             self.assertEqual(repo, repository)
 
             request = urllib.request.Request(
@@ -94,7 +95,7 @@ class ActualPublisherTests(unittest.TestCase):
                 with urllib.request.urlopen(request, timeout=15) as response:
                     return response.read()
             except urllib.error.HTTPError as error:
-                if error.code == 404:
+                if error.code == HTTPStatus.NOT_FOUND:
                     return None
                 raise
 

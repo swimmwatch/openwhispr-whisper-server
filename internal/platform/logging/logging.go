@@ -5,14 +5,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"regexp"
 	"slices"
 )
 
-const (
-	minHTTPStatus = 100
-	maxHTTPStatus = 599
-)
+const maxHTTPStatus = 599
 
 type requestIDKey struct{}
 
@@ -133,7 +131,7 @@ func requestAttributes(event Event) []slog.Attr {
 	}
 
 	status := event.Status
-	if status < minHTTPStatus || status > maxHTTPStatus {
+	if status < http.StatusContinue || status > maxHTTPStatus {
 		status = 0
 	}
 

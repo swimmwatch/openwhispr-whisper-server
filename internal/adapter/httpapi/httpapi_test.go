@@ -71,18 +71,18 @@ func TestHTTPFailureMapping(t *testing.T) {
 		status   int
 		category string
 	}{
-		{domain.InvalidInput, "invalid_request", 400, "invalid_request_error"},
-		{domain.UnsupportedAudio, "unsupported_audio", 400, "invalid_request_error"},
-		{domain.AudioTooLong, "audio_duration_limit", 400, "invalid_request_error"},
-		{domain.UnknownModel, "model_not_found", 404, "invalid_request_error"},
-		{domain.QueueFull, "queue_full", 429, "rate_limit_error"},
-		{domain.DeadlineExceeded, "operation_timeout", 408, "timeout_error"},
-		{domain.NotReady, "not_ready", 503, "service_unavailable_error"},
-		{domain.BackendUnavailable, "backend_unavailable", 503, "service_unavailable_error"},
-		{domain.GPUUnavailable, "gpu_unavailable", 503, "service_unavailable_error"},
-		{domain.ProvisioningFailed, "provisioning_failed", 503, "service_unavailable_error"},
-		{domain.ShuttingDown, "shutting_down", 503, "service_unavailable_error"},
-		{domain.Internal, "internal_error", 500, "api_error"},
+		{domain.InvalidInput, "invalid_request", http.StatusBadRequest, "invalid_request_error"},
+		{domain.UnsupportedAudio, "unsupported_audio", http.StatusBadRequest, "invalid_request_error"},
+		{domain.AudioTooLong, "audio_duration_limit", http.StatusBadRequest, "invalid_request_error"},
+		{domain.UnknownModel, "model_not_found", http.StatusNotFound, "invalid_request_error"},
+		{domain.QueueFull, "queue_full", http.StatusTooManyRequests, "rate_limit_error"},
+		{domain.DeadlineExceeded, "operation_timeout", http.StatusRequestTimeout, "timeout_error"},
+		{domain.NotReady, "not_ready", http.StatusServiceUnavailable, "service_unavailable_error"},
+		{domain.BackendUnavailable, "backend_unavailable", http.StatusServiceUnavailable, "service_unavailable_error"},
+		{domain.GPUUnavailable, "gpu_unavailable", http.StatusServiceUnavailable, "service_unavailable_error"},
+		{domain.ProvisioningFailed, "provisioning_failed", http.StatusServiceUnavailable, "service_unavailable_error"},
+		{domain.ShuttingDown, "shutting_down", http.StatusServiceUnavailable, "service_unavailable_error"},
+		{domain.Internal, "internal_error", http.StatusInternalServerError, "api_error"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.code, func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestHTTPFailureMapping(t *testing.T) {
 		&domain.Failure{Kind: domain.Internal},
 	} {
 		mapped := MapFailure(err)
-		if mapped.Status != 500 || mapped.Code != "internal_error" || mapped.Param != nil {
+		if mapped.Status != http.StatusInternalServerError || mapped.Code != "internal_error" || mapped.Param != nil {
 			t.Fatalf("unsafe fallback: %+v", mapped)
 		}
 	}
@@ -119,10 +119,10 @@ func TestHTTPFailureMapping(t *testing.T) {
 		status   int
 		category string
 	}{
-		"route_not_found":        {404, "invalid_request_error"},
-		"payload_too_large":      {413, "invalid_request_error"},
-		"rate_limit_exceeded":    {429, "rate_limit_error"},
-		"rate_limit_unavailable": {503, "service_unavailable_error"},
+		"route_not_found":        {http.StatusNotFound, "invalid_request_error"},
+		"payload_too_large":      {http.StatusRequestEntityTooLarge, "invalid_request_error"},
+		"rate_limit_exceeded":    {http.StatusTooManyRequests, "rate_limit_error"},
+		"rate_limit_unavailable": {http.StatusServiceUnavailable, "service_unavailable_error"},
 	} {
 		mapped := NewHTTPFailure(code, "file")
 		if mapped.Status != expected.status || mapped.Code != code || mapped.Type != expected.category {
@@ -136,11 +136,11 @@ func TestHTTPFailureMapping(t *testing.T) {
 	private := "PRIVATE"
 	for _, err := range []error{
 		&domain.Failure{Kind: domain.InvalidInput, Field: private},
-		&HTTPFailure{Code: "invalid_request", Status: 200, Message: private, Type: private, Param: &private},
+		&HTTPFailure{Code: "invalid_request", Status: http.StatusOK, Message: private, Type: private, Param: &private},
 	} {
 		mapped := MapFailure(err)
 		b, _ := json.Marshal(mapped.Envelope())
-		if mapped.Status != 400 || mapped.Param != nil || strings.Contains(string(b), private) {
+		if mapped.Status != http.StatusBadRequest || mapped.Param != nil || strings.Contains(string(b), private) {
 			t.Fatal("untrusted error presentation accepted")
 		}
 	}
@@ -191,27 +191,27 @@ func TestRequestIDMiddlewareAndRecoverPrivacy(t *testing.T) {
 						panic(&domain.Failure{Kind: domain.UnknownModel, Cause: errors.New("PRIVATE_PANIC")})
 					}
 
-					return c.String(200, "PRIVATE_TRANSCRIPT")
+					return c.String(http.StatusOK, "PRIVATE_TRANSCRIPT")
 				})
 				e.GET("/health/ready", func(c *echo.Context) error {
-					return c.JSON(503, map[string]string{"status": "not_ready", "reason": "not_ready"})
+					return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "reason": "not_ready"})
 				})
 				path := "/v1/audio/transcriptions?prompt=PRIVATE_QUERY"
 				r := httptest.NewRequest(http.MethodPost, path, strings.NewReader("PRIVATE_AUDIO"))
 				r.RemoteAddr = "192.0.2.1:10"
 				r.Header.Set("X-Request-ID", "accepted.id")
 				r.Header.Set("Authorization", "PRIVATE_HEADER")
-				expected := 200
+				expected := http.StatusOK
 				switch outcome {
 				case "failure":
-					expected = 400
+					expected = http.StatusBadRequest
 				case "unknown-error", "panic", "typed-panic":
-					expected = 500
+					expected = http.StatusInternalServerError
 				case "not-found":
-					expected = 404
+					expected = http.StatusNotFound
 					r.URL.Path = "/PRIVATE_PATH"
 				case "probe":
-					expected = 503
+					expected = http.StatusServiceUnavailable
 					r.Method = "GET"
 					r.URL.Path = "/health/ready"
 				}
@@ -229,7 +229,7 @@ func TestRequestIDMiddlewareAndRecoverPrivacy(t *testing.T) {
 				}
 
 				lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-				if (expected >= 500 || level != "error") && len(lines) != 1 {
+				if (expected >= http.StatusInternalServerError || level != "error") && len(lines) != 1 {
 					t.Fatal("completion not logged once")
 				}
 				if out.Len() > 0 {
@@ -257,7 +257,7 @@ func TestRequestIDMiddlewareAndRecoverPrivacy(t *testing.T) {
 				t.Fatal("unsafe or inconsistent generated ID")
 			}
 
-			return c.NoContent(204)
+			return c.NoContent(http.StatusNoContent)
 		})
 		w := send(e, "192.0.2.1:10", "/v1/audio/transcriptions", nil, ids...)
 		if !logging.ValidRequestID(w.Header().Get("X-Request-ID")) {
@@ -272,7 +272,7 @@ func TestConcurrentCorrelation(t *testing.T) {
 	var out bytes.Buffer
 	e := fixture(t, api, nil, &out, "info")
 	e.POST("/v1/audio/transcriptions", func(c *echo.Context) error {
-		return c.String(200, logging.RequestID(c.Request().Context()))
+		return c.String(http.StatusOK, logging.RequestID(c.Request().Context()))
 	})
 	var wg sync.WaitGroup
 	for i := 0; i < 40; i++ {
@@ -332,10 +332,10 @@ func TestRateStoreSubstitutionAndFailure(t *testing.T) {
 		status int
 		code   string
 	}{
-		{true, nil, 200, ""},
-		{false, nil, 429, "rate_limit_exceeded"},
-		{false, errors.New("PRIVATE"), 503, "rate_limit_unavailable"},
-		{true, errors.New("PRIVATE"), 503, "rate_limit_unavailable"},
+		{true, nil, http.StatusOK, ""},
+		{false, nil, http.StatusTooManyRequests, "rate_limit_exceeded"},
+		{false, errors.New("PRIVATE"), http.StatusServiceUnavailable, "rate_limit_unavailable"},
+		{true, errors.New("PRIVATE"), http.StatusServiceUnavailable, "rate_limit_unavailable"},
 	} {
 		s := &contextStore{fakeStore: fakeStore{allow: tt.allow, err: tt.err}}
 		api := settings(t)
@@ -345,14 +345,14 @@ func TestRateStoreSubstitutionAndFailure(t *testing.T) {
 			calls++
 			_, _ = io.ReadAll(c.Request().Body)
 
-			return c.NoContent(200)
+			return c.NoContent(http.StatusOK)
 		})
 		body := &observedBody{}
 		w := send(e, "[::ffff:192.0.2.1]:10", "/v1/audio/transcriptions", body)
 		if w.Code != tt.status || !s.called || len(s.keys) != 1 || s.keys[0] != "192.0.2.1" {
 			t.Fatalf("store substitution: %d %v", w.Code, s)
 		}
-		if tt.status != 200 {
+		if tt.status != http.StatusOK {
 			if calls != 0 || body.reads != 0 {
 				t.Fatal("denied admission performed work")
 			}
@@ -360,10 +360,10 @@ func TestRateStoreSubstitutionAndFailure(t *testing.T) {
 				t.Fatal("unsafe denial")
 			}
 		}
-		if tt.status == 429 && w.Header().Get("Retry-After") != "3" {
+		if tt.status == http.StatusTooManyRequests && w.Header().Get("Retry-After") != "3" {
 			t.Fatal("context retry header lost")
 		}
-		if tt.status == 503 && w.Header().Get("Retry-After") != "" {
+		if tt.status == http.StatusServiceUnavailable && w.Header().Get("Retry-After") != "" {
 			t.Fatal("storage error advertises quota delay")
 		}
 	}
@@ -378,22 +378,22 @@ func TestRateLimitAdmissionRefillProbeBypassAndStoreIsolation(t *testing.T) {
 		store := NewMemoryStore(api.RateLimit)
 		e := fixture(t, api, store, io.Discard, "info")
 		e.POST("/v1/audio/transcriptions", func(c *echo.Context) error {
-			return c.NoContent(200)
+			return c.NoContent(http.StatusOK)
 		})
 		e.GET("/health/live", func(c *echo.Context) error {
-			return c.JSON(200, map[string]string{"status": "live"})
+			return c.JSON(http.StatusOK, map[string]string{"status": "live"})
 		})
-		if send(e, "192.0.2.1:10", "/v1/audio/transcriptions", nil).Code != 200 {
+		if send(e, "192.0.2.1:10", "/v1/audio/transcriptions", nil).Code != http.StatusOK {
 			t.Fatal("initial admission")
 		}
 
 		body := &observedBody{}
 		w := send(e, "192.0.2.1:10", "/v1/audio/transcriptions", body)
 		retry, err := strconv.Atoi(w.Header().Get("Retry-After"))
-		if w.Code != 429 || err != nil || retry < 1 || body.reads != 0 {
+		if w.Code != http.StatusTooManyRequests || err != nil || retry < 1 || body.reads != 0 {
 			t.Fatal("quota denial contract")
 		}
-		if send(e, "192.0.2.2:10", "/v1/audio/transcriptions", nil).Code != 200 {
+		if send(e, "192.0.2.2:10", "/v1/audio/transcriptions", nil).Code != http.StatusOK {
 			t.Fatal("independent IP exhausted")
 		}
 
@@ -401,11 +401,11 @@ func TestRateLimitAdmissionRefillProbeBypassAndStoreIsolation(t *testing.T) {
 		r.RemoteAddr = "192.0.2.1:10"
 		probe := httptest.NewRecorder()
 		e.ServeHTTP(probe, r)
-		if probe.Code != 200 || strings.TrimSpace(probe.Body.String()) != "{\"status\":\"live\"}" {
+		if probe.Code != http.StatusOK || strings.TrimSpace(probe.Body.String()) != "{\"status\":\"live\"}" {
 			t.Fatal("probe did not bypass")
 		}
 		time.Sleep(time.Second)
-		if send(e, "192.0.2.1:10", "/v1/audio/transcriptions", nil).Code != 200 {
+		if send(e, "192.0.2.1:10", "/v1/audio/transcriptions", nil).Code != http.StatusOK {
 			t.Fatal("quota did not refill")
 		}
 
@@ -444,7 +444,7 @@ func TestTrustedClientIP(t *testing.T) {
 		s := &fakeStore{allow: true}
 		e := fixture(t, api, s, io.Discard, "info")
 		e.POST("/v1/audio/transcriptions", func(c *echo.Context) error {
-			return c.NoContent(200)
+			return c.NoContent(http.StatusOK)
 		})
 		r := httptest.NewRequest("POST", "/v1/audio/transcriptions", nil)
 		r.RemoteAddr = tt.peer
@@ -464,14 +464,14 @@ func TestHTTPFailureResponseOwnership(t *testing.T) {
 	api.RateLimit.Enabled = false
 	e := fixture(t, api, nil, io.Discard, "info")
 	e.POST("/v1/audio/transcriptions", func(c *echo.Context) error {
-		if err := c.String(201, "owned"); err != nil {
+		if err := c.String(http.StatusCreated, "owned"); err != nil {
 			return err
 		}
 
 		return errors.New("PRIVATE")
 	})
 	w := send(e, "192.0.2.1:10", "/v1/audio/transcriptions", nil, "same-id")
-	if w.Code != 201 || w.Body.String() != "owned" || w.Header().Get("X-Request-ID") != "same-id" {
+	if w.Code != http.StatusCreated || w.Body.String() != "owned" || w.Header().Get("X-Request-ID") != "same-id" {
 		t.Fatal("committed response overwritten")
 	}
 
