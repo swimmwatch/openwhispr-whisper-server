@@ -78,7 +78,7 @@ def qualify(
     data: dict[str, Any], security: dict[str, Any], stage: str, now: datetime | None = None
 ) -> None:
     summary = validate_security(security, now)
-    summary["build_input_identity"] = security["build_input_identity"]
+    summary["build_input_identity"] = data["build_input_identity"]
     data["security_report_refs"] = [summary]
     validate(data, stage, now, require_channels=False)
 

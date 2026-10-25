@@ -18,7 +18,7 @@ from tools.release.inventory import assemble, qualify
 
 class ReleaseInventoryTests(unittest.TestCase):
     def security(self) -> dict[str, Any]:
-        return dict(test_security.SecurityAggregateTests().inventory(), build_input_identity=DIGEST)
+        return test_security.SecurityAggregateTests().inventory()
 
     def inputs(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
         previous = inventory()
