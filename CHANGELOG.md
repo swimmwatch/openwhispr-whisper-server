@@ -62,6 +62,8 @@ added when releases exist.
 
 ### Fixed
 
+- Bind security qualification to the selected image build identity without
+  requiring an extra field that the scanner report does not produce.
 - Replace the security summary on CI retries so the aggregate cannot download
   an earlier failed scan report.
 - Set both packaged chart image tags to the selected release version.
