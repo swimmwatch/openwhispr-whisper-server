@@ -1,73 +1,206 @@
-name: Protected artifact publication
-
+name: Release
+run-name: Release ${{ github.event.release.tag_name || inputs.version_tag }}
 'on':
+  # Manual dispatch creates the GitHub Release after all channels succeed.
+  # The published event operates on an already public, operator-created release.
+  release:
+    types:
+    - published
   workflow_dispatch:
     inputs:
-      inventory:
-        description: Reviewed versioned release inventory path in this main revision
+      version_tag:
+        description: Existing release tag, for example v0.1.0-rc.1
         required: true
         type: string
-      ci-run-id:
-        description: Successful main CI run for this exact revision
-        required: true
-        type: string
-      stage:
-        description: Release preparation stage
-        required: true
-        type: choice
-        options:
-        - candidate
-        - stable
-
 permissions: {}
-
 concurrency:
   group: whisper-artifact-publish
   cancel-in-progress: false
-
 jobs:
-  publish:
-    if: github.ref == 'refs/heads/main'
+  metadata:
+    if: github.event_name == 'release' || github.ref == 'refs/heads/main'
     runs-on: &runner ubuntu-24.04
-    timeout-minutes: 120
-    environment: release
-    outputs:
-      images-run: ${{ steps.selection.outputs.images-run }}
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read
-      packages: write
-    env:
-      INVENTORY: ${{ inputs.inventory }}
-      STAGE: ${{ inputs.stage }}
-      SELECTED_RUN: ${{ inputs.ci-run-id }}
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      stage: ${{ steps.release.outputs.stage }}
+      source-sha: ${{ steps.release.outputs.source-sha }}
+      image-source: ${{ steps.release.outputs.image-source }}
+      images-run: ${{ steps.release.outputs.images-run }}
     steps:
     - uses: &checkout actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+        fetch-depth: 0
 
     - name: Load shared CI configuration
       uses: &ci_config ./.github/actions/ci-config
 
     - name: Set up locked Python tooling
-      uses: ./.github/actions/setup-python
+      uses: &setup_python ./.github/actions/setup-python
       with:
         cache: 'false'
         dev-dependencies: 'false'
 
-    - name: Validate inventory path and selected run
-      id: selection
+    - name: Resolve tag and successful merged PR checks
+      id: release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version_tag }}
       run: |
-        echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-auth" >> "$GITHUB_ENV"
-        echo "HELM_REGISTRY_CONFIG=$RUNNER_TEMP/helm-auth.json" >> "$GITHUB_ENV"
-        uv run --no-sync --no-dev python tools/release/select_run.py \
-          --inventory "$INVENTORY" \
-          --selected-run "$SELECTED_RUN" \
-          --stage "$STAGE" \
-          --output "$GITHUB_OUTPUT"
+        uv run --no-sync --no-dev python tools/release/source.py   --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"   --output "$RUNNER_TEMP/release-source" --github-output "$GITHUB_OUTPUT"
+
+    - uses: &upload_artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: release-source
+        path: ${{ runner.temp }}/release-source
+        if-no-files-found: error
+        include-hidden-files: true
+        compression-level: ${{ env.CI_ARTIFACT_COMPRESSION_LEVEL }}
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+  build:
+    name: build-${{ matrix.role }}
+    needs: metadata
+    if: needs.metadata.outputs.stage == 'candidate'
+    runs-on: *runner
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        role:
+        - api
+        - backend
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+        ref: ${{ needs.metadata.outputs.source-sha }}
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: *setup_python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - name: Build cold release image
+      uses: ./.github/actions/build-image
+      with:
+        role: ${{ matrix.role }}
+        source-sha: ${{ needs.metadata.outputs.source-sha }}
+        version: ${{ needs.metadata.outputs.version }}
+        cold: 'true'
+
+    - uses: *upload_artifact
+      with:
+        name: ${{ matrix.role }}
+        path: |-
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.tar
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.json
+        if-no-files-found: error
+        include-hidden-files: true
+        compression-level: ${{ env.CI_ARTIFACT_COMPRESSION_LEVEL }}
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+  chart:
+    needs: metadata
+    runs-on: *runner
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+        ref: ${{ needs.metadata.outputs.source-sha }}
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: *setup_python
+      with:
+        cache: 'false'
+        dev-dependencies: 'false'
+
+    - uses: &cache_tools ./.github/actions/cache-tools
+
+    - name: Install pinned Helm
+      run: uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/chart-tools"
+        --tools helm3 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+
+    - name: Package and render the release version
+      env:
+        SOURCE_SHA: ${{ needs.metadata.outputs.source-sha }}
+        RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      run: |
+        uv run --no-sync --no-dev python tools/release/artifacts.py chart   --helm "$RUNNER_TEMP/chart-tools/helm3" --source-sha "$SOURCE_SHA"   --version "$RELEASE_VERSION" --output "$RUNNER_TEMP/artifacts/chart"
+
+    - uses: *upload_artifact
+      with:
+        name: chart
+        path: ${{ runner.temp }}/artifacts/chart
+        if-no-files-found: error
+        include-hidden-files: true
+        compression-level: ${{ env.CI_ARTIFACT_COMPRESSION_LEVEL }}
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
+  image-runtime:
+    needs:
+    - metadata
+    - build
+    - chart
+    if: needs.metadata.outputs.stage == 'candidate'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/image-runtime.yml
+    with:
+      source-sha: ${{ needs.metadata.outputs.source-sha }}
+  publish:
+    if: ${{ !cancelled() && needs.metadata.result == 'success' && needs.chart.result == 'success' && ((needs.build.result
+      == 'success' && needs.image-runtime.result == 'success') || needs.metadata.outputs.stage == 'stable')
+      }}
+    runs-on: *runner
+    timeout-minutes: 120
+    environment: release
+    outputs:
+      images-run: ${{ needs.metadata.outputs.images-run }}
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    env:
+      INVENTORY: .local/release/inventory.json
+      STAGE: ${{ needs.metadata.outputs.stage }}
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+        ref: ${{ needs.metadata.outputs.source-sha }}
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: *setup_python
+      with:
+        cache: 'false'
+        dev-dependencies: 'false'
+
+    - uses: &download_artifact actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: release-source
+        path: ${{ runner.temp }}/release-source
 
     - name: Cache verified tool downloads
-      uses: ./.github/actions/cache-tools
+      uses: *cache_tools
 
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -75,40 +208,33 @@ jobs:
         cache: true
         cache-dependency-path: go.sum
 
-    - uses: &download_artifact actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+    - uses: *download_artifact
       with:
-        run-id: ${{ inputs.ci-run-id }}
         github-token: ${{ github.token }}
         name: chart
         path: ${{ runner.temp }}/current/chart
 
     - uses: *download_artifact
       with:
-        run-id: ${{ inputs.ci-run-id }}
-        github-token: ${{ github.token }}
-        name: security-summary
-        path: ${{ runner.temp }}/current/security-summary
-
-    - uses: *download_artifact
-      with:
-        run-id: ${{ steps.selection.outputs.images-run }}
+        run-id: ${{ needs.metadata.outputs.images-run }}
         github-token: ${{ github.token }}
         name: api
         path: ${{ runner.temp }}/accepted/api
 
     - uses: *download_artifact
       with:
-        run-id: ${{ steps.selection.outputs.images-run }}
+        run-id: ${{ needs.metadata.outputs.images-run }}
         github-token: ${{ github.token }}
         name: backend
         path: ${{ runner.temp }}/accepted/backend
 
     - uses: *download_artifact
       with:
-        run-id: ${{ steps.selection.outputs.images-run }}
+        run-id: ${{ needs.metadata.outputs.images-run }}
         github-token: ${{ github.token }}
         name: chart
         path: ${{ runner.temp }}/accepted/chart
+      if: needs.metadata.outputs.stage == 'stable'
 
     - name: Cache vulnerability database only
       uses: ./.github/actions/cache-trivy-db
@@ -119,24 +245,42 @@ jobs:
         destination: ${{ runner.temp }}/release-tools
         cache: 'false'
 
-    - name: Select immutable images and perform fresh release security checks
+    - name: Qualify tagged artifacts before publication
       env:
         GH_TOKEN: ${{ github.token }}
+        IMAGE_SOURCE: ${{ needs.metadata.outputs.image-source }}
       run: |
         uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/release-tools" --tools helm3 buildx govulncheck gosec hadolint --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
         echo "$RUNNER_TEMP/release-tools" >> "$GITHUB_PATH"
-        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/accepted"
-        uv run --no-sync --no-dev python tools/release/prepare.py --inventory "$INVENTORY" --stage "$STAGE" --current "$RUNNER_TEMP/current" --candidate "$RUNNER_TEMP/accepted" --output "$RUNNER_TEMP/artifacts" --helm "$RUNNER_TEMP/release-tools/helm3"
-        uv run --no-sync --no-dev python tools/security/run.py --artifacts "$RUNNER_TEMP/artifacts" --bin "$RUNNER_TEMP/release-tools" --image-source-sha "${{ steps.selection.outputs.image-source }}" --output "$RUNNER_TEMP/selected-security.json" --db-cache "$CI_TRIVY_CACHE_DIR"
-        uv run --no-sync --no-dev python tools/release/verify_ci.py --inventory "$INVENTORY" --stage "$STAGE" --security "$RUNNER_TEMP/current/security-summary/security.json" --selected-security "$RUNNER_TEMP/selected-security.json"
+        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/accepted" --images-only
+        approved=()
+        if [ "$STAGE" = stable ]; then
+          approved=(--approved "$RUNNER_TEMP/release-source/approved.json")
+        fi
+        uv run --no-sync --no-dev python tools/release/inventory.py assemble   --inventory "$INVENTORY" --source "$RUNNER_TEMP/release-source/source.json"   --current "$RUNNER_TEMP/current" --accepted "$RUNNER_TEMP/accepted"   --output "$RUNNER_TEMP/artifacts" --helm "$RUNNER_TEMP/release-tools/helm3" "${approved[@]}"
+        uv run --no-sync --no-dev python tools/security/run.py --artifacts "$RUNNER_TEMP/artifacts" --bin "$RUNNER_TEMP/release-tools" --image-source-sha "$IMAGE_SOURCE" --output "$RUNNER_TEMP/selected-security.json" --db-cache "$CI_TRIVY_CACHE_DIR"
+        uv run --no-sync --no-dev python tools/release/inventory.py qualify --inventory "$INVENTORY" --security "$RUNNER_TEMP/selected-security.json" --stage "$STAGE"
+
+    - uses: *upload_artifact
+      with:
+        name: release-inventory
+        path: |-
+          ${{ env.INVENTORY }}
+          ${{ runner.temp }}/selected-security.json
+        if-no-files-found: error
+        include-hidden-files: true
+        compression-level: ${{ env.CI_ARTIFACT_COMPRESSION_LEVEL }}
+        retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
 
     - name: Prepare task-local Docker authentication
       run: |
         umask 077
         mkdir -p "$RUNNER_TEMP/docker-auth"
+        echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-auth" >> "$GITHUB_ENV"
+        echo "HELM_REGISTRY_CONFIG=$RUNNER_TEMP/helm-auth.json" >> "$GITHUB_ENV"
 
     - name: Authenticate Docker registry ghcr.io
-      uses: &login_action docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+      uses: &docker_login docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
       env:
         DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
       with:
@@ -146,7 +290,7 @@ jobs:
         logout: true
 
     - name: Authenticate Docker registry docker.io
-      uses: *login_action
+      uses: *docker_login
       env:
         DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
       with:
@@ -173,7 +317,7 @@ jobs:
 
     - name: Preserve partial channel state
       if: ${{ always() }}
-      uses: &upload_artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      uses: *upload_artifact
       with:
         name: publication-state
         overwrite: true
@@ -186,12 +330,17 @@ jobs:
       run: |
         rm -rf "$DOCKER_CONFIG"
         rm -f "$HELM_REGISTRY_CONFIG"
-
+    needs:
+    - metadata
+    - build
+    - chart
+    - image-runtime
   pages:
-    needs: publish
-    if: github.ref == 'refs/heads/main'
+    needs:
+    - metadata
+    - publish
     runs-on: *runner
-    timeout-minutes: &timeout30 30
+    timeout-minutes: 30
     environment: release-pages
     permissions:
       contents: write
@@ -199,33 +348,33 @@ jobs:
       pages: write
       id-token: write
     env:
-      INVENTORY: ${{ inputs.inventory }}
-      STAGE: ${{ inputs.stage }}
+      INVENTORY: .local/release/channel-state.json
+      STAGE: ${{ needs.metadata.outputs.stage }}
     steps:
     - uses: *checkout
       with:
         persist-credentials: false
+        ref: ${{ needs.metadata.outputs.source-sha }}
 
     - name: Load shared CI configuration
       uses: *ci_config
 
     - name: Set up locked Python tooling
-      uses: ./.github/actions/setup-python
+      uses: *setup_python
       with:
         cache: 'false'
         dev-dependencies: 'false'
 
     - name: Cache verified tool downloads
-      uses: ./.github/actions/cache-tools
+      uses: *cache_tools
 
     - uses: *download_artifact
       with:
         name: publication-state
-        path: ${{ runner.temp }}
+        path: .local/release
 
     - uses: *download_artifact
       with:
-        run-id: ${{ inputs.ci-run-id }}
         github-token: ${{ github.token }}
         name: chart
         path: ${{ runner.temp }}/artifacts/chart
@@ -235,7 +384,7 @@ jobs:
         uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/release-tools" --tools helm3 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
         git fetch origin gh-pages
         git worktree add --detach "$RUNNER_TEMP/pages" FETCH_HEAD
-        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel pages-prepare --pages-dir "$RUNNER_TEMP/pages" --helm "$RUNNER_TEMP/release-tools/helm3"
+        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$INVENTORY" --channel pages-prepare --pages-dir "$RUNNER_TEMP/pages" --helm "$RUNNER_TEMP/release-tools/helm3"
 
     - name: Publish Pages branch without rewriting existing history
       env:
@@ -260,9 +409,9 @@ jobs:
 
     - name: Verify anonymous Pages archive and index
       run: |
-        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel pages-verify
+        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage "$STAGE" --artifacts "$RUNNER_TEMP/artifacts" --state "$INVENTORY" --channel pages-verify
         if [ "$STAGE" = candidate ]; then
-          uv run --no-sync --no-dev python tools/release/check.py --inventory "$RUNNER_TEMP/channel-state.json" --stage "$STAGE"
+          uv run --no-sync --no-dev python tools/release/check.py --inventory "$INVENTORY" --stage "$STAGE"
         fi
 
     - name: Preserve final or partial publication state
@@ -271,46 +420,47 @@ jobs:
       with:
         name: final-publication-state
         overwrite: true
-        path: ${{ runner.temp }}/channel-state.json
+        path: ${{ env.INVENTORY }}
         if-no-files-found: error
         retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
-
   aliases:
     needs:
+    - metadata
     - publish
     - pages
-    if: github.ref == 'refs/heads/main' && inputs.stage == 'stable'
+    if: needs.metadata.outputs.stage == 'stable'
     runs-on: *runner
-    timeout-minutes: *timeout30
+    timeout-minutes: 30
     environment: release
     permissions:
       contents: read
       actions: read
       packages: write
     env:
-      INVENTORY: ${{ inputs.inventory }}
+      INVENTORY: .local/release/channel-state.json
       STAGE: stable
     steps:
     - uses: *checkout
       with:
         persist-credentials: false
+        ref: ${{ needs.metadata.outputs.source-sha }}
 
     - name: Load shared CI configuration
       uses: *ci_config
 
     - name: Set up locked Python tooling
-      uses: ./.github/actions/setup-python
+      uses: *setup_python
       with:
         cache: 'false'
         dev-dependencies: 'false'
 
     - name: Cache verified tool downloads
-      uses: ./.github/actions/cache-tools
+      uses: *cache_tools
 
     - uses: *download_artifact
       with:
         name: final-publication-state
-        path: ${{ runner.temp }}
+        path: .local/release
 
     - uses: *download_artifact
       with:
@@ -338,7 +488,7 @@ jobs:
         mkdir -p "$RUNNER_TEMP/docker-auth"
 
     - name: Authenticate Docker registry ghcr.io
-      uses: *login_action
+      uses: *docker_login
       env:
         DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
       with:
@@ -348,7 +498,7 @@ jobs:
         logout: true
 
     - name: Authenticate Docker registry docker.io
-      uses: *login_action
+      uses: *docker_login
       env:
         DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
       with:
@@ -370,21 +520,20 @@ jobs:
       uses: *download_artifact
       with:
         artifact-ids: ${{ steps.alias-recovery.outputs.artifact-id }}
-        path: ${{ runner.temp }}
+        path: .local/release
         merge-multiple: true
 
     - name: Prepare alias rollback before any registry writes
       if: steps.alias-recovery.outputs.artifact-id == ''
       run: uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage
-        stable --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel
-        aliases-prepare
+        stable --artifacts "$RUNNER_TEMP/artifacts" --state "$INVENTORY" --channel aliases-prepare
 
     - name: Persist the original alias snapshot before registry writes
       if: steps.alias-recovery.outputs.artifact-id == ''
       uses: *upload_artifact
       with:
         name: stable-alias-snapshot
-        path: ${{ runner.temp }}/channel-state.json
+        path: ${{ env.INVENTORY }}
         if-no-files-found: error
         retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
 
@@ -392,8 +541,8 @@ jobs:
       env:
         DOCKER_CONFIG: ${{ runner.temp }}/docker-auth
       run: |
-        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage stable --artifacts "$RUNNER_TEMP/artifacts" --state "$RUNNER_TEMP/channel-state.json" --channel aliases
-        uv run --no-sync --no-dev python tools/release/check.py --inventory "$RUNNER_TEMP/channel-state.json" --stage stable
+        uv run --no-sync --no-dev python tools/release/publish.py --inventory "$INVENTORY" --stage stable --artifacts "$RUNNER_TEMP/artifacts" --state "$INVENTORY" --channel aliases
+        uv run --no-sync --no-dev python tools/release/check.py --inventory "$INVENTORY" --stage stable
 
     - name: Preserve complete or partial stable state
       if: ${{ always() }}
@@ -401,10 +550,63 @@ jobs:
       with:
         name: stable-publication-state
         overwrite: true
-        path: ${{ runner.temp }}/channel-state.json
+        path: ${{ env.INVENTORY }}
         if-no-files-found: warn
         retention-days: ${{ env.CI_PUBLICATION_RETENTION_DAYS }}
 
     - name: Remove task-local registry credentials
       if: ${{ always() }}
       run: rm -rf "$RUNNER_TEMP/docker-auth"
+  github-release:
+    needs:
+    - metadata
+    - pages
+    - aliases
+    if: ${{ !cancelled() && needs.pages.result == 'success' && (needs.metadata.outputs.stage == 'candidate'
+      || needs.aliases.result == 'success') }}
+    runs-on: *runner
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+        ref: ${{ needs.metadata.outputs.source-sha }}
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: *setup_python
+      with:
+        cache: 'false'
+        dev-dependencies: 'false'
+
+    - uses: *download_artifact
+      with:
+        name: ${{ needs.metadata.outputs.stage == 'stable' && 'stable-publication-state' || 'final-publication-state'
+          }}
+        path: ${{ runner.temp }}
+
+    - uses: *download_artifact
+      with:
+        name: chart
+        path: ${{ runner.temp }}/artifacts/chart
+
+    - name: Verify final publication state
+      env:
+        STAGE: ${{ needs.metadata.outputs.stage }}
+      run: uv run --no-sync --no-dev python tools/release/check.py --inventory "$RUNNER_TEMP/channel-state.json"
+        --stage "$STAGE"
+
+    - name: Create or complete GitHub Release assets
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        RELEASE_STAGE: ${{ needs.metadata.outputs.stage }}
+        STATE_FILE: ${{ runner.temp }}/channel-state.json
+        CHART_DIR: ${{ runner.temp }}/artifacts/chart
+      run: bash tools/release/upload-assets.sh

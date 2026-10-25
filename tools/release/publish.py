@@ -19,6 +19,8 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any, cast
 
+import yaml
+
 from tools.release.artifacts import inspect_layout
 from tools.release.check import (
     digest,
@@ -148,8 +150,8 @@ def publish_image(layout: Path, repository: str, version: str, expected: str) ->
 
 
 def publish_chart(
-    archive: Path, version: str, archive_sha: str, manifest_sha: str, helm: str | Path
-) -> None:
+    archive: Path, version: str, archive_sha: str, manifest_sha: str | None, helm: str | Path
+) -> str:
     require(
         hashlib.sha256(archive.read_bytes()).hexdigest() == archive_sha,
         "Chart source identity mismatch",
@@ -161,10 +163,9 @@ def publish_chart(
 
         existing = manifest(CHART, version)
 
-    require(
-        existing is not None and "sha256:" + hashlib.sha256(existing).hexdigest() == manifest_sha,
-        "Chart manifest collision or read-back mismatch",
-    )
+    require(existing is not None, "Published chart manifest is unavailable")
+    observed = "sha256:" + hashlib.sha256(cast(bytes, existing)).hexdigest()
+    require(manifest_sha is None or observed == manifest_sha, "Immutable chart manifest collision")
 
     layers = json.loads(cast(bytes, existing))["layers"]
     layers = [
@@ -179,22 +180,19 @@ def publish_chart(
         content is not None and hashlib.sha256(content).hexdigest() == archive_sha,
         "Chart archive read-back mismatch",
     )
+    return observed
 
 
 def prepare_pages(
     archive: Path, version: str, expected: str, directory: Path, helm: str | Path
 ) -> None:
-    import yaml
-
-    from tools.contract_yaml import load_yaml
-
     directory.mkdir(parents=True, exist_ok=True)
 
     target = directory / ("whisper-server-" + version + ".tgz")
     immutable_copy(archive, target, expected)
 
     previous = (
-        load_yaml((directory / "index.yaml").read_text())
+        yaml.safe_load((directory / "index.yaml").read_text())
         if (directory / "index.yaml").exists()
         else {"apiVersion": "v1", "entries": {}}
     )
@@ -204,7 +202,7 @@ def prepare_pages(
         immutable_copy(archive, isolated / target.name, expected)
         command([helm, "repo", "index", isolated, "--url", PAGE_URL])
 
-        incoming = load_yaml((isolated / "index.yaml").read_text())
+        incoming = yaml.safe_load((isolated / "index.yaml").read_text())
 
     merged = merge_index(previous, incoming)
     (directory / "index.yaml").write_text(yaml.safe_dump(merged, sort_keys=False))
@@ -370,10 +368,8 @@ def verify_pages(archive: Path, version: str, expected: str) -> None:
             "Pages read-back mismatch",
         )
 
-    from tools.contract_yaml import load_yaml
-
     with urllib.request.urlopen(PAGE_URL + "index.yaml", timeout=120) as response:
-        index = load_yaml(response.read().decode())
+        index = yaml.safe_load(response.read())
 
     require(
         any(
@@ -448,7 +444,7 @@ def main() -> int:
             if args.channel == "chart":
                 data["channel_status"]["chart-oci"] = {"status": "failed"}
                 save(args.state, data)
-                publish_chart(
+                data["chart_oci_manifest_digest"] = publish_chart(
                     archive,
                     version,
                     data["chart_archive_sha256"],
@@ -476,7 +472,7 @@ def main() -> int:
                 }
 
             save(args.state, data)
-    except OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError:
+    except OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, yaml.YAMLError:
         print(
             "FAIL: publication incomplete; preserved channel state is authoritative",
             file=sys.stderr,

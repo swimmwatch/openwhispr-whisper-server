@@ -1,53 +1,13 @@
 import hashlib
 import unittest
-from functools import partial
 from pathlib import Path
 from unittest.mock import patch
 
 from tests.tooling.test_release import NOW, inventory
 from tools.release import check
-from tools.security.check import validate as validate_security
 
 
 class PublisherTests(unittest.TestCase):
-    @patch("tools.release.verify_ci.security_check", partial(validate_security, now=NOW))
-    def test_external_ci_must_be_the_actual_successful_main_source_run(self) -> None:
-        import copy
-
-        from tests.tooling.test_security import SecurityAggregateTests
-        from tools.release.verify_ci import verify
-
-        data = inventory()
-        security = SecurityAggregateTests().inventory()
-        run = {
-            "id": 1,
-            "event": "push",
-            "head_branch": "main",
-            "conclusion": "success",
-            "head_sha": data["release_source_sha"],
-            "path": ".github/workflows/ci.yml",
-        }
-        jobs = [{"name": name, "conclusion": "success"} for name in check.REQUIRED_JOBS]
-        verify(data, run, jobs, security, data["release_source_sha"])
-
-        for change in (
-            {"event": "pull_request"},
-            {"head_sha": "4" * 40},
-            {"conclusion": "failure"},
-            {"id": 2},
-        ):
-            with self.subTest(change=change), self.assertRaises(ValueError):
-                verify(data, dict(run, **change), jobs, security, data["release_source_sha"])
-
-        with self.assertRaises(ValueError):
-            verify(data, run, jobs[:-1], security, data["release_source_sha"])
-
-        wrong = copy.deepcopy(security)
-        wrong["image_manifest_digests"]["api"] = "sha256:" + "9" * 64
-
-        with self.assertRaises(ValueError):
-            verify(data, run, jobs, wrong, data["release_source_sha"])
-
     def test_preparation_does_not_claim_pending_channels_are_published(self) -> None:
         data = inventory()
         for channel in data["channel_status"].values():

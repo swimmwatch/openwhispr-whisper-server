@@ -1,0 +1,123 @@
+name: Build Whisper image
+description: Build and verify one OCI image with isolated Buildx and preserved attestations
+inputs:
+  role:
+    description: 'Image role: api or backend'
+    required: true
+  source-sha:
+    description: Checked out source revision
+    required: true
+  version:
+    description: Release version; omitted for development builds
+    default: ''
+  cold:
+    description: Disable all imported and exported build caches
+    default: 'false'
+outputs:
+  digest:
+    description: Verified OCI index digest
+    value: ${{ steps.image.outputs.digest }}
+runs:
+  using: composite
+  steps:
+  - name: Set up isolated parallel Buildx
+    id: builder
+    uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+    with:
+      version: ${{ env.CI_BUILDX_VERSION }}
+      name: whisper-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.role }}
+      driver: docker-container
+      driver-opts: image=${{ env.CI_BUILDKIT_IMAGE }}
+      buildkitd-flags: --root=/var/lib/buildkit
+      buildkitd-config-inline: |
+        [worker.oci]
+          max-parallelism = ${{ env.CI_BUILD_PARALLELISM }}
+      cache-binary: true
+      keep-state: false
+      cleanup: true
+
+  - name: Cache PR image layers
+    if: inputs.cold != 'true'
+    uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+    with:
+      path: ${{ env.CI_BUILD_CACHE_DIR }}
+      key: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ inputs.role }}-${{
+        hashFiles('containers/*.Dockerfile', 'containers/build-inputs.json', 'go.mod', 'go.sum', 'tools/versions.yaml')
+        }}-${{ inputs.source-sha }}
+      restore-keys: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ inputs.role
+        }}-
+
+  - name: Prepare image export
+    run: mkdir -p "$RUNNER_TEMP/artifacts/$ROLE"
+    env:
+      ROLE: ${{ inputs.role }}
+    shell: bash
+
+  - name: Generate OCI labels and registry annotations
+    id: metadata
+    uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+    env:
+      DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+      IMAGE_METADATA: |
+        org.opencontainers.image.title=openwhispr-whisper-server-${{ inputs.role }}
+        org.opencontainers.image.description=${{ inputs.role == 'api' && 'Resident Whisper public API and bounded FFmpeg decoder' || 'Resident Whisper supervisor and unchanged CUDA native server' }}
+        org.opencontainers.image.authors=openwhispr-whisper-server contributors
+        org.opencontainers.image.vendor=openwhispr-whisper-server contributors
+        org.opencontainers.image.url=https://github.com/${{ github.repository }}
+        org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/${{ inputs.source-sha }}/docs/container-builds.md
+        org.opencontainers.image.source=https://github.com/${{ github.repository }}
+        org.opencontainers.image.version=${{ inputs.version || format('0.0.0-dev+sha.{0}', inputs.source-sha) }}
+        org.opencontainers.image.revision=${{ inputs.source-sha }}
+        org.opencontainers.image.licenses=${{ inputs.role == 'api' && 'Apache-2.0 AND MIT AND BSD-3-Clause AND LGPL-2.1-or-later' || 'Apache-2.0 AND MIT AND BSD-3-Clause AND LicenseRef-NVIDIA-CUDA' }}
+    with:
+      tags: type=sha,format=long
+      flavor: latest=false
+      labels: ${{ env.IMAGE_METADATA }}
+      annotations: ${{ env.IMAGE_METADATA }}
+
+  - name: Build GPU-free image with actual SBOM and provenance
+    id: image
+    uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+    env:
+      DOCKER_BUILD_SUMMARY: 'false'
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    with:
+      builder: ${{ steps.builder.outputs.name }}
+      context: .
+      file: containers/${{ inputs.role }}.Dockerfile
+      platforms: ${{ env.CI_IMAGE_PLATFORM }}
+      build-args: |
+        SOURCE_REVISION=${{ inputs.source-sha }}
+        APP_VERSION=${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.version'] }}
+      labels: ${{ steps.metadata.outputs.labels }}
+      annotations: ${{ steps.metadata.outputs.annotations }}
+      outputs: type=oci,dest=${{ runner.temp }}/artifacts/${{ inputs.role }}/image.tar
+      provenance: mode=max
+      attests: type=sbom,generator=${{ env.CI_SBOM_GENERATOR }}
+      push: false
+      no-cache: ${{ inputs.cold == 'true' }}
+      cache-from: ${{ inputs.cold != 'true' && format('type=local,src={0}', env.CI_BUILD_CACHE_DIR) ||
+        '' }}
+      cache-to: ${{ inputs.cold != 'true' && format('type=local,dest={0},mode=max,compression=zstd,compression-level=3',
+        env.CI_BUILD_CACHE_NEXT_DIR) || '' }}
+
+  - name: Verify and record exported image identities
+    env:
+      IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+      ROLE: ${{ inputs.role }}
+      SOURCE_SHA: ${{ inputs.source-sha }}
+      COLD_BUILD: ${{ inputs.cold }}
+    run: |
+      qualification=()
+      if [ "$COLD_BUILD" = true ]; then
+        qualification=(--cold)
+      fi
+      uv run --no-sync --no-dev python tools/release/artifacts.py record-image --output "$RUNNER_TEMP/artifacts/$ROLE" --source-sha "$SOURCE_SHA" --expected-digest "$IMAGE_DIGEST" "${qualification[@]}"
+    shell: bash
+
+  - name: Replace PR cache without accumulating old blobs
+    if: inputs.cold != 'true'
+    run: |
+      rm -rf "$CI_BUILD_CACHE_DIR"
+      mv "$CI_BUILD_CACHE_NEXT_DIR" "$CI_BUILD_CACHE_DIR"
+    shell: bash

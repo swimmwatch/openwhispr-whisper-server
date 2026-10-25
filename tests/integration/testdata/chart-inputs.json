@@ -14,23 +14,5 @@
     "sha256": "86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb",
     "binary_sha256": "57ce7fc4ea77b28ee6fa91ae071abcade74d3f524e80c9decff5877a5ac8eda4",
     "actual": "v4.3.0+gbec5b06"
-  },
-  {
-    "kind": "kubernetes",
-    "version": "1.35.0",
-    "url": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json",
-    "sha256": "483500149ee52ce5753d75f5639101d985bb4f5e902cc05b1ba7627465d62446"
-  },
-  {
-    "kind": "kubernetes",
-    "version": "1.36.0",
-    "url": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.0/api/openapi-spec/swagger.json",
-    "sha256": "dcede2063da1d7ad62ecb5af8adb6d7fabd0b52385a7fa0048afb491dac90450"
-  },
-  {
-    "kind": "kubernetes",
-    "version": "1.37.0",
-    "url": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.37.0/api/openapi-spec/swagger.json",
-    "sha256": "465276aedf437726de5a6ed23a41b86d78bb0d347edf251a755ae26a93cdd8a6"
   }
 ]

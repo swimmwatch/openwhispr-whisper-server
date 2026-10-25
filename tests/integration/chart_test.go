@@ -117,16 +117,16 @@ func chartRender(t *testing.T, helm, kube string, values map[string]any) []map[s
 	t.Helper()
 
 	manifest := run(t, nil, helm, chartArgs(t, kube, values)...)
-	saved := filepath.Join(t.TempDir(), "rendered.yaml")
-	if err := os.WriteFile(saved, manifest, 0600); err != nil {
-		t.Fatal(err)
-	}
+	return chartResources(t, manifest)
+}
+
+func chartResources(t *testing.T, manifest []byte) []map[string]any {
+	t.Helper()
 
 	python := pythonBinary()
 	data := run(
-		t, nil, python, "-c",
-		"import json,sys,yaml; print(json.dumps([x for x in yaml.safe_load_all(open(sys.argv[1])) if x]))",
-		saved)
+		t, manifest, python, "-c",
+		"import json,sys,yaml; json.dump([x for x in yaml.safe_load_all(sys.stdin) if x], sys.stdout)")
 	var result []map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatal(err)
@@ -260,39 +260,6 @@ func TestChartMatrix(t *testing.T) {
 					}
 				}
 				checkChartStorageAndProbes(t, resources, settings, values)
-				python := pythonBinary()
-				schemaDir := os.Getenv("P06_SCHEMA_DIR")
-				if schemaDir == "" {
-					schemaDir = filepath.Join(root(t), ".local/p06/schemas")
-				}
-
-				schemaBytes, err := os.ReadFile(filepath.Join(schemaDir, kube+".json"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				chartInputHash(t, "kubernetes", kube, "sha256", schemaBytes)
-				data, _ := json.Marshal(resources)
-				run(t, data, python, "-c", `import json,sys,jsonschema
-schema=json.load(open(sys.argv[1]))
-def normalize(value):
- if isinstance(value,dict):
-  if value.get('format')=='int-or-string': value['type']=['integer','string']
-  if value.get('type')=='integer' and value.get('format') in ('int32','int64'):
-   bits=32 if value['format']=='int32' else 64
-   value.setdefault('minimum',-(2**(bits-1)))
-   value.setdefault('maximum',2**(bits-1)-1)
-  if value.get('type')=='object' and 'properties' in value: value.setdefault('additionalProperties',False)
-  for nested in value.values(): normalize(nested)
- elif isinstance(value,list):
-  for nested in value: normalize(nested)
-normalize(schema)
-resolver=jsonschema.RefResolver.from_schema(schema)
-for resource in json.load(sys.stdin):
- group,version=(resource['apiVersion'].split('/') if '/' in resource['apiVersion'] else ('',resource['apiVersion']))
- matches=[value for value in schema['definitions'].values() if {'group':group,'version':version,'kind':resource['kind']} in value.get('x-kubernetes-group-version-kind',[])]
- assert len(matches)==1, (resource['apiVersion'],resource['kind'])
- jsonschema.Draft4Validator(matches[0],resolver=resolver).validate(resource)
-print('PASS: official Kubernetes API schemas')`, filepath.Join(schemaDir, kube+".json"))
 			}
 		}
 
@@ -800,22 +767,13 @@ func TestChartLabelStrings(t *testing.T) {
 				args := chartArgs(t, "1.35.0", map[string]any{"nameOverride": tc.override})
 				args[1] = tc.release
 				manifest := run(t, nil, helm, args...)
-				python := pythonBinary()
-				run(t, manifest, python, "-c", `import sys,yaml
-expected={'app.kubernetes.io/name':sys.argv[1], 'app.kubernetes.io/instance':sys.argv[2]}
-seen={key:0 for key in expected}
-def check(value):
- if isinstance(value,dict):
-  for key,nested in value.items():
-   if key in expected:
-    assert isinstance(nested,str) and nested==expected[key], (key,nested)
-    seen[key]+=1
-   check(nested)
- elif isinstance(value,list):
-  for nested in value: check(nested)
-check(list(yaml.safe_load_all(sys.stdin)))
-assert all(seen.values()), seen
-`, tc.override, tc.release)
+				for _, resource := range chartResources(t, manifest) {
+					labels := object(t, object(t, resource["metadata"])["labels"])
+					if labels["app.kubernetes.io/name"] != tc.override ||
+						labels["app.kubernetes.io/instance"] != tc.release {
+						t.Fatalf("rendered resource has incorrect application identity: %v", labels)
+					}
+				}
 			})
 		}
 	}

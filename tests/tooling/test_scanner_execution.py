@@ -7,7 +7,13 @@ import unittest
 from pathlib import Path
 
 from tools.security.check import evaluate
-from tools.security.run import HELM_SCAN_FLAGS, execute, json_stream
+from tools.security.run import (
+    GOSEC_SCAN_FLAGS,
+    HADOLINT_SCAN_FLAGS,
+    HELM_SCAN_FLAGS,
+    execute,
+    json_stream,
+)
 
 
 @unittest.skipUnless(
@@ -90,27 +96,33 @@ class ActualScannerTests(unittest.TestCase):
 
         self.assertEqual(evaluate("govulncheck", json_stream(stdout), code)["blocking_count"], 0)
 
-    def test_unsafe_go_source_has_the_expected_rule(self) -> None:
+    def test_inline_go_suppression_cannot_hide_unsafe_source(self) -> None:
         (self.root / "go.mod").write_text("module example.com/scanner-fixture\n\ngo 1.27.3\n")
         (self.root / "main.go").write_text(
-            'package main\nimport ("os"; "os/exec")\nfunc main(){_ = exec.Command(os.Args[1]).Run()}\n'
+            'package main\n\nimport (\n\t"os"\n\t"os/exec"\n)\n\n'
+            "func main() {\n\t_ = exec.Command(os.Args[1]).Run() // #nosec G204 -- fixture\n}\n"
         )
 
-        code, stdout = execute([str(self.binaries / "gosec"), "-fmt=json", "./..."], self.root)
+        code, stdout = execute(
+            [str(self.binaries / "gosec"), *GOSEC_SCAN_FLAGS, "./..."], self.root
+        )
         raw = json.loads(stdout)
 
         self.assertIn("G204", {item["rule_id"] for item in raw["Issues"]})
         self.assertGreater(evaluate("gosec", raw, code)["blocking_count"], 0)
 
-    def test_unsafe_dockerfile_and_privileged_manifest_block(self) -> None:
+    def test_inline_docker_suppression_cannot_hide_unpinned_image(self) -> None:
         dockerfile = self.root / "Dockerfile"
-        dockerfile.write_text("FROM ubuntu:24.04\nUSER root\nRUN apt-get update\n")
+        dockerfile.write_text("# hadolint ignore=DL3007\nFROM ubuntu:latest\n")
 
-        code, stdout = execute([str(self.binaries / "hadolint"), "--format=json", str(dockerfile)])
+        code, stdout = execute(
+            [str(self.binaries / "hadolint"), *HADOLINT_SCAN_FLAGS, str(dockerfile)]
+        )
+        self.assertIn("DL3007", {item["code"] for item in json.loads(stdout)})
 
         self.assertGreater(evaluate("hadolint", json.loads(stdout), code)["blocking_count"], 0)
 
-        dockerfile.unlink()
+    def test_privileged_manifest_blocks(self) -> None:
         manifest = self.root / "pod.yaml"
         manifest.write_text(
             "apiVersion: v1\nkind: Pod\nmetadata:\n  name: unsafe\nspec:\n  automountServiceAccountToken: true\n  containers:\n    - name: unsafe\n      image: ubuntu:24.04\n      securityContext:\n        privileged: true\n"

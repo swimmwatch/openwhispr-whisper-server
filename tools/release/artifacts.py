@@ -192,7 +192,7 @@ def record_image(
     (output / "image.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
 
 
-def chart(output: Path, helm: str | Path, source_sha: str) -> None:
+def chart(output: Path, helm: str | Path, source_sha: str, version: str | None = None) -> None:
     source(source_sha)
     output.mkdir(parents=True, exist_ok=True)
 
@@ -233,6 +233,14 @@ def chart(output: Path, helm: str | Path, source_sha: str) -> None:
             "backend": {"runtimeClassName": "nvidia"},
         },
     }
+    package: list[str | Path] = [helm, "package", "charts/whisper-server", "--destination", output]
+    if version is not None:
+        package.extend(["--version", version, "--app-version", version])
+    command(package)
+    archives = list(output.glob("*.tgz"))
+    require(len(archives) == 1, "Expected one chart archive")
+    extract(archives[0], output / "extracted")
+
     for name, values in variants.items():
         values_path = output / "values" / (name + ".json")
         values_path.parent.mkdir(exist_ok=True)
@@ -247,7 +255,7 @@ def chart(output: Path, helm: str | Path, source_sha: str) -> None:
                     helm,
                     "template",
                     "whisper",
-                    "charts/whisper-server",
+                    archives[0],
                     "--namespace",
                     "whisper-test",
                     "--kube-version",
@@ -257,12 +265,6 @@ def chart(output: Path, helm: str | Path, source_sha: str) -> None:
                 ],
                 stdout=stream,
             )
-
-    command([helm, "package", "charts/whisper-server", "--destination", output])
-
-    archives = list(output.glob("*.tgz"))
-    require(len(archives) == 1, "Expected one chart archive")
-    extract(archives[0], output / "extracted")
 
     result = {
         "source_sha": source_sha,
@@ -362,6 +364,7 @@ def main() -> int:
     c.add_argument("--output", type=Path, required=True)
     c.add_argument("--helm", required=True)
     c.add_argument("--source-sha", required=True)
+    c.add_argument("--version")
 
     g = sub.add_parser("jobs")
     g.add_argument("--needs", required=True)
@@ -387,7 +390,7 @@ def main() -> int:
         elif args.action == "record-image":
             record_image(args.output.resolve(), args.source_sha, args.cold, args.expected_digest)
         elif args.action == "chart":
-            chart(args.output.resolve(), args.helm, args.source_sha)
+            chart(args.output.resolve(), args.helm, args.source_sha, args.version)
         elif args.action == "jobs":
             required_jobs(json.loads(args.needs), set(args.required))
         else:

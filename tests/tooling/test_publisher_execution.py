@@ -14,7 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.contract_yaml import load_yaml
+import yaml
+
 from tools.release import publish
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -141,7 +142,7 @@ class ActualPublisherTests(unittest.TestCase):
                     [helm, *args], env=environment, stderr=subprocess.STDOUT, timeout=60
                 )
 
-            metadata = load_yaml(command("show", "chart", str(archive)).decode())
+            metadata = yaml.safe_load(command("show", "chart", str(archive)))
             command("push", str(archive), "oci://" + address + "/helm", "--plain-http")
             request = urllib.request.Request(
                 "http://" + address + "/v2/helm/whisper-server/manifests/" + metadata["version"],
@@ -254,7 +255,7 @@ class ActualPublisherTests(unittest.TestCase):
 
             self.assertEqual(first, (output / "index.yaml").read_bytes())
 
-            index = load_yaml(first.decode())
+            index = yaml.safe_load(first)
 
             self.assertEqual(
                 {item["version"] for item in index["entries"]["whisper-server"]}, {"0.0.1", version}

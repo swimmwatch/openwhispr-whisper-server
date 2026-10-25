@@ -1,0 +1,74 @@
+name: Image runtime verification
+'on':
+  workflow_call:
+    inputs:
+      source-sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Image runtime and license checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ inputs.source-sha }}
+
+    - name: Load shared CI configuration
+      uses: ./.github/actions/ci-config
+
+    - name: Set up pinned Docker with OCI image store
+      uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+      with:
+        version: ${{ env.CI_DOCKER_VERSION }}
+        set-host: 'true'
+        daemon-config: |
+          {"features":{"containerd-snapshotter":true}}
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: ./.github/actions/cache-tools
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: '*'
+        path: ${{ runner.temp }}/artifacts
+
+    - name: Validate transferred OCI bytes and load the exact runtime images
+      run: |
+        uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/artifacts"
+        docker load --input "$RUNNER_TEMP/artifacts/api/image.tar" &
+        api_load=$!
+        docker load --input "$RUNNER_TEMP/artifacts/backend/image.tar" &
+        backend_load=$!
+        load_status=0
+        wait "$api_load" || load_status=$?
+        wait "$backend_load" || load_status=$?
+        test "$load_status" -eq 0
+        for role in api backend; do
+          image_digest=$(jq -er '.manifest_digest' "$RUNNER_TEMP/artifacts/$role/image.json")
+          docker tag "$image_digest" "whisper-$role:local"
+        done
+
+    - name: Run the real P05 image, metadata, license and Compose checks without a GPU
+      env:
+        P05_IMAGE_TESTS: '1'
+        PYTHON: ${{ github.workspace }}/.venv/bin/python
+      run: go test -v -vet=off ./tests/integration -count=1 -parallel "$GOMAXPROCS"

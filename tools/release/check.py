@@ -58,8 +58,10 @@ def validate(
     for key in ("candidate_source_sha", "release_source_sha"):
         source(data.get(key))
 
-    for key in ("build_input_identity", "runtime_input_identity", "chart_oci_manifest_digest"):
+    for key in ("build_input_identity", "runtime_input_identity"):
         digest(data.get(key))
+    if require_channels or data.get("chart_oci_manifest_digest") is not None:
+        digest(data.get("chart_oci_manifest_digest"))
 
     digest(data.get("chart_archive_sha256"), prefix=False)
     require(

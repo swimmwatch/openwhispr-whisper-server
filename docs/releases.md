@@ -1,22 +1,30 @@
 # Build, security and release automation
 
-C02 has passed local checks and remains incomplete pending actual trusted GitHub
-CI on the current committed inputs. See the
+Release qualification requires successful trusted GitHub CI on the selected
+committed inputs. See the
 [current handoff](specs/gpu-whisper-server/tasks/handoff.md). Local fixtures and
 cached dirty-checkout builds do not qualify a release or GPU acceptance.
 
 ## Contributor CI
 
-`.github/workflows/ci.yml` runs every PR/main push without path filters, secrets,
-write tokens or GPU runners. It includes `source`, `chart`, `build-api`,
+`.github/workflows/ci.yml` runs only on pull requests, without path filters,
+secrets, write tokens or GPU runners. Pushing or merging to `main` does not start
+another CI run, and there is no manual CI trigger. It includes `source`, `chart`, `build-api`,
 `build-backend`, image runtime/license checks and the aggregate `Security Check`.
 The aggregate rejects failed, cancelled, skipped and missing dependencies.
 
-Source checks reuse real module/format/vet/race/import/contracts/agent tests.
-Chart checks reuse P06's Helm 3/4 and Kubernetes API-schema matrix. Runtime checks
+Release publication starts on a published GitHub Release or manual dispatch with
+one existing `version_tag`. Source qualification follows the merged PR and its
+latest CI run, which must have succeeded. The release workflow builds its own cold RC images;
+PR image caches and artifacts are not release inputs.
+
+Source checks reuse module verification, formatting, vet, race and behavior tests.
+Chart checks use native Helm 3/4 linting, rendering and packaging, with tests for
+configuration propagation, pairing, storage, isolation and resource ownership.
+The custom Python Kubernetes-schema walker is retired. Runtime checks
 reuse P05's actual image/metadata/license/Compose harness. Separate cold builds
 use exclusive GPU-free BuildKit builders without imported layer or compiler
-caches and retain actual SBOM/provenance in the selected OCI indexes. Normal
+caches for release candidates and retain actual SBOM/provenance in the selected OCI indexes. Normal
 Dockerfile caches remain available to ordinary developer builds. Untrusted PR
 cache is never a trusted release input.
 
@@ -36,10 +44,8 @@ uv requirement from `pyproject.toml` using `version-file`. Buildx, BuildKit,
 SBOM-generator and Trivy pins come from `tools/versions.yaml`. No workflow copies
 these version numbers. The shared Action also owns CPU-based worker budgets,
 dependency-cache paths/namespaces, artifact retention/compression and download
-timeouts. Workflow/job/step environment overrides of shared settings are rejected
-by the policy checks. Runner labels, repeated timeouts and literal action SHAs
-use native scalar YAML anchors within each workflow; action revisions remain
-immutable and checked against the reviewed inventory.
+timeouts. Runner labels, repeated timeouts and literal action SHAs use native
+scalar YAML anchors within each workflow; action revisions remain immutable.
 
 | Operation | Action |
 | --- | --- |
@@ -93,7 +99,7 @@ The lock verifies dependency identities, and module verification still runs.
 See the pinned [Go](https://raw.githubusercontent.com/actions/setup-go/b7ad1dad31e06c5925ef5d2fc7ad053ef454303e/README.md#caching-dependency-files-and-build-outputs)
 and [uv cache guidance](https://docs.astral.sh/uv/guides/integration/github/#caching).
 
-Tool caches contain downloaded archives/schemas, keyed by OS/architecture/job
+Tool caches contain downloaded tool archives, keyed by OS/architecture/job
 and the tool manifests. Every restored input is verified against SHA256 before
 extraction/use. Helm 3/4 install directly to separate names so parallel extraction
 cannot overwrite a shared `helm` executable. Trivy persists only `db/`, with
@@ -176,7 +182,7 @@ Put the selected tool directory and Go 1.27.3 on this shell's PATH. Example path
 below are ignored; never stage raw reports or credentials.
 
 ```bash
-rtk proxy uv run --locked python tools/install_ci.py --destination .local/ci/bin --tools actionlint buildx govulncheck gosec hadolint trivy helm3 helm4 kubernetes-schemas
+rtk proxy uv run --locked python tools/install_ci.py --destination .local/ci/bin --tools actionlint buildx govulncheck gosec hadolint trivy helm3 helm4
 rtk proxy uv run --locked python tools/release/artifacts.py build --role api --cold --source-sha <source-sha> --output .local/ci/artifacts/api
 rtk proxy uv run --locked python tools/release/artifacts.py build --role backend --cold --source-sha <source-sha> --output .local/ci/artifacts/backend
 rtk proxy uv run --locked python tools/release/artifacts.py chart --helm .local/ci/bin/helm3 --source-sha <source-sha> --output .local/ci/artifacts/chart
@@ -231,69 +237,98 @@ findings cannot be declared clean. Two applicable FFmpeg MEDIUM findings and
 one whisper.cpp MEDIUM finding remain in report counts. Actual image tests verify
 excluded H264/DVD subtitle components and Nsight tooling are absent.
 
-## Controlled publication and prerequisites
+## Tag-driven release workflow
 
-`.github/workflows/release.yml` is manual and main-only. Registry writes use the
-protected `release` environment; Pages writes use `release-pages`. A serialized
-concurrency group never cancels an active publisher. `verify_ci.py` validates the
-actual trusted GitHub run/event/source/jobs and downloaded security inventory
-before registry credentials are used.
+The workflow follows the same trigger and metadata/build structure as the
+[cloakbrowser-mcp release workflow](https://github.com/swimmwatch/cloakbrowser-mcp/blob/main/.github/workflows/release.yml).
+It runs on `release: published` or manual dispatch with an existing `version_tag`.
+Supported versions are `vX.Y.Z-rc.N` and `vX.Y.Z`, with positive RC numbers.
+The former `inventory`, `ci-run-id` and `stage` workflow inputs are replaced by
+`version_tag`; mode and source qualification are resolved automatically.
 
-Docker login Actions run after validation, use only task-local Docker configuration
-and log out in their post steps. Helm OCI authentication retains its native CLI;
-credential directories are also removed by the existing unconditional cleanup.
+The jobs are:
 
-Operator setup, outside local packet execution:
+1. `metadata` resolves the tag to a commit in `main`, finds the PR that merged
+   that exact commit, and verifies its latest CI run and required jobs. It records
+   both the tested PR head and the resulting merge commit. This relies on the
+   required up-to-date PR checks on `main`; bypass merges are not qualified.
+2. `build` runs the API/backend matrix in parallel for an RC. The shared
+   `build-image` Action uses isolated Buildx builders, a cold build, OCI exports,
+   SHA-pinned Docker Actions, and real SBOM/provenance. Stable skips rebuilding.
+3. `chart` packages the version from the tag and renders that same archive.
+4. `image-runtime` verifies the newly built RC images using the same reusable
+   runtime/license/Compose harness as PR CI. Stable reuses the accepted images.
+5. `publish` selects the exact artifacts and performs fresh security checks
+   before registry authentication. It copies the accepted OCI indexes unchanged
+   to GHCR and Docker Hub, publishes the chart to Helm OCI, verifies anonymous
+   read-back, and saves complete or partial channel state.
+6. `pages` preserves previous chart versions, publishes the same archive in the
+   Helm repository, and verifies its public index and archive bytes.
+7. `aliases` runs only for stable, after all channels pass. It preserves the
+   existing durable snapshot/rollback behavior before advancing semantic aliases.
+8. `github-release` verifies the final state and attaches the chart and public
+   release inventory, with native `sha256sum` checksums. Existing assets are
+   downloaded and compared before a retry;
+   different bytes are never overwritten.
 
-- Protected release environments/reviewers; GHCR job-scoped package-write token.
-- Scoped protected secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, names only.
-- Existing `gh-pages` branch and public Pages site, retaining previous archives.
-- Reviewed non-secret `docs/releases/<version>.json` and its exact successful main
-  CI run ID. No accepted real release inventory is supplied yet.
+Manual dispatch avoids exposing a GitHub Release before the channels are ready:
 
-Release inventory is reviewed in a separate metadata commit. Its
-`release_source_sha` names an already completed successful trusted main CI run.
-Only that selected inventory file may differ in the approval checkout. Image
-provenance retains `candidate_source_sha`. Runtime/chart changes require a new
-source CI run.
+```sh
+gh workflow run release.yml --ref main -f version_tag=v0.1.0-rc.1
+```
 
-Stable selection uses the accepted candidate's exact images with the current
-stable chart. Five actual Helm renders verify metadata-only promotion. Stable
-rescans the selected original images against the current chart, without rebuilding
-or relabeling binaries. Current CI images may differ from the accepted selection.
+The tag must already exist and identify a merged PR commit in `main`. This command
+uses the release tooling from the tagged source, so create the tag after this
+workflow and its helpers have been merged. The command
+is an example, not evidence that a tag, build or release has been created.
+When using the `published` event, the GitHub Release is already public before
+workflow execution. Create stable GitHub Releases only after P07/P08 acceptance;
+failed qualification prevents channel writes but does not unpublish the release.
+The final asset step uses `GITHUB_TOKEN`, so creating the GitHub Release there
+does not recursively trigger another release workflow, according to
+[GitHub's workflow trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
-`tools/release/check.py --prepare --stage candidate|stable --inventory <file>`
-checks prerequisites without claiming pending channels succeeded. Without
-`--prepare`, all six channels need successful read-back. Stable also requires
-both actual GPU reports, final docs, accepted image identities and rendering
-runtime equivalence.
+RC source and version come from the tag. `source.py` records the actual PR CI
+reference; `inventory.py` assembles identities from the built images and chart.
+The chart OCI digest is recorded after verified publication, separately from the
+archive SHA256. No placeholder OCI digest can qualify completed publication.
 
-`publish.py` copies selected OCI indexes unchanged across GHCR/Docker Hub,
-rejects immutable-version collisions and verifies anonymous manifest reads. It
-publishes the same chart archive to OCI and Pages, merges the old index and
-preserves per-channel state atomically. A partial failure remains incomplete;
-retry verifies existing bytes before writes. Task-local credentials are removed.
+Stable requires a reviewed, non-secret `docs/releases/X.Y.Z.json` in the tagged
+source. It contains the published RC inventory, `candidate_run_id`, accepted image
+digests, both successful GPU reports, and final documentation approval. The
+workflow downloads that RC's exact image artifacts and candidate chart, verifies
+runtime and rendered equivalence, builds the stable chart, and rescans the
+selected images. It retains their original RC build provenance. GPU reports must
+match the selected manifests and runtime identity. The RC artifacts are retained
+for `CI_PUBLICATION_RETENTION_DAYS`; complete promotion before expiry. Restoring
+expired artifacts from their immutable registry identities requires a separate
+implementation; never rebuild them as a substitute for accepted GPU evidence.
 
-Pages uses explicit artifact upload/deployment and anonymous read-back before
-alias finalization. Stable aliases (`major`, `major.minor`, `latest`) advance
-only after all channels and qualification gates pass. A separate `aliases-prepare`
-phase saves previous identities before any alias write. Its immutable
-`stable-alias-snapshot` artifact survives runner loss and is restored by ID when
-retrying the same run. The conservative rollback set covers writes lost before
-final progress could be uploaded. Snapshot preparation/upload failure prevents
-writes; mutable progress artifacts can be replaced, the original snapshot cannot.
-See GitHub's [artifact API](https://docs.github.com/en/rest/actions/artifacts#list-workflow-run-artifacts)
-and the pinned [upload](https://raw.githubusercontent.com/actions/upload-artifact/cf430e030ddbb5b0abf93d22962f4752f3646cd9/README.md)
-and [download](https://raw.githubusercontent.com/actions/download-artifact/9000827ccba6bdab643e8b6fd33ac0654aef8333/README.md) actions.
+Publisher configuration remains operator-owned:
 
-Existing aliases are restored and verified after failure. Previously absent
-aliases remain explicit partial state: manifest deletion could remove immutable
-tags sharing the same manifest. Such failures cannot qualify stable completion.
-Before starting a different workflow run, reconcile prior partial state; a fresh
-run cannot infer another run's original aliases.
+- Protected `release` and `release-pages` environments and required reviewers.
+- Repository-linked GHCR package permissions and public package visibility.
+- Scoped `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` protected secrets.
+- An existing `gh-pages` branch and public Pages site preserving prior archives.
+- For stable, the reviewed acceptance inventory described above.
 
-Disposable local acceptance covers registry copy, collisions, retry, archive/index
-preservation, accepted-image selection, actual Helm equivalence and interrupted
-alias publication. Actual protected remote execution and channel compatibility
-remain unqualified. Do not present local checks as completed remote publication. R01/R02 own real publication/anonymous pulls;
-P07/P08 own hardware acceptance. CI never deploys Home Lab.
+The global concurrency group serializes shared Helm index and alias writes;
+active publication is never cancelled for another version. Python/uv versions,
+worker budgets, tool checksums and cache settings remain centralized in the
+existing project configuration. Registry authentication uses native Actions and
+task-local credential directories, with unconditional cleanup.
+
+Retry failed jobs in the same workflow run to reuse the exact built artifacts.
+A full rebuild can produce different attestations or package bytes and cannot
+overwrite an existing version; allocate another RC when inputs or bytes change.
+Cross-registry publication is not atomic. A failed channel remains incomplete,
+and previously published immutable versions are preserved.
+
+Stable aliases advance only after all channels and acceptance gates pass. The
+immutable `stable-alias-snapshot` artifact preserves previous identities across
+runner loss. A failure restores existing aliases where possible; previously absent
+aliases remain explicit partial state because deleting a shared manifest could
+remove immutable tags. Such a failure cannot qualify stable completion.
+
+This workflow publishes artifacts only. It does not deploy Kubernetes or perform
+GPU acceptance, and no successful build or upload substitutes for P07/P08.
