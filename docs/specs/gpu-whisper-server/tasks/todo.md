@@ -1,6 +1,6 @@
 # Resident V1 completion checklist
 
-Status: I01, I02, I03, C01, F01, P01–P06 and C02 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Hosted CI/security qualification is complete. Cluster/GPU/CNI acceptance, publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
+Status: I01, I02, I03, C01, F01, P01–P06 and C02 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Hosted CI/security qualification and R01 pre-release publication are complete. Cluster/GPU/CNI acceptance, stable publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
 
 ## Current hosted qualification — 2026-10-25
 
@@ -8,8 +8,23 @@ C02 is complete. [Trusted main CI 40138859398](https://github.com/swimmwatch/ope
 jobs on source `76279e618a2692551bbdad48d2dd77461ad4b530`, including both cold image builds,
 runtime/license/Compose checks and all 22 security targets. The earlier probe
 timeout is fixed and validated in main. The historical checkpoints below are
-superseded by this result. R01 still requires a separate invocation and its manual
-publisher prerequisites; no release or GPU/cluster acceptance has been performed.
+superseded by this result. R01 subsequently published the GPU-unqualified rc.2
+candidate; no GPU/cluster acceptance or stable release has been performed.
+
+## R01 completion — 2026-10-25
+
+[PR #9](https://github.com/swimmwatch/openwhispr-whisper-server/pull/9) merged only
+after all seven jobs in [CI 40207794716](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40207794716)
+passed. [Release 40212576458](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40212576458)
+then passed cold builds, runtime/license/Compose checks, fresh complete security
+qualification and all publication/read-back jobs for
+[v0.1.0-rc.2](https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.2).
+Independent anonymous pulls checked both exact images in GHCR/Docker Hub,
+SBOM/provenance, identical OCI/Pages/GitHub chart bytes, both chart image-registry
+overrides and GitHub pre-release/not-latest metadata. Final inventory gate:
+`candidate_published_unqualified`; pinned specification passed and R01 agreement
+remained ready. The rc.1 tag is unchanged. See [handoff](handoff.md) for identities.
+Only R01 is newly checked; subsequent packets are not started.
 
 ## Historical checkpoints
 
@@ -62,7 +77,7 @@ R01 is not yet eligible.
 - [x] [P05 — images and standalone composition](05_images_standalone.md)
 - [x] [P06 — Helm chart](06_helm_chart.md)
 - [x] [C02 — complete build and release pipeline](ci_02_build_release_pipeline.md)
-- [ ] [R01 — pre-release publication and anonymous pull-back](release_01_prerelease.md)
+- [x] [R01 — pre-release publication and anonymous pull-back](release_01_prerelease.md)
 - [ ] [P07 — Docker / RTX 5070 Ti Laptop acceptance](07_docker_gpu_acceptance.md)
 - [ ] [P08 — Home Lab / RTX 2060 acceptance](08_homelab_gpu_acceptance.md)
 - [ ] [P09 — final README and durable documentation](09_documentation.md)

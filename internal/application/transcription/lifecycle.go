@@ -61,20 +61,34 @@ func (s *Service) readinessLocked() (Health, error) {
 func (s *Service) readHealth(parent context.Context) (h Health, err error) {
 	ctx, cancel := context.WithTimeout(parent, s.opts.HealthTimeout)
 	defer cancel()
+	// Serialize only dependency observations, never inference or cached public
+	// readiness. Commit each result before releasing the gate so an earlier
+	// in-flight Busy response cannot overwrite a later completion refresh.
+	select {
+	case s.healthCalls <- struct{}{}:
+	case <-ctx.Done():
+		return Health{}, &domain.Failure{Kind: domain.BackendUnavailable, Cause: ctx.Err()}
+	}
+	defer func() { <-s.healthCalls }()
 	defer func() {
 		if recover() != nil {
 			err = &domain.Failure{Kind: domain.Internal}
 		}
+		if ctx.Err() != nil {
+			h, err = Health{}, &domain.Failure{Kind: domain.BackendUnavailable, Cause: ctx.Err()}
+		}
+		s.mu.Lock()
+		s.health, s.healthErr, s.observed = h, err, time.Now()
+		if err == nil && s.compatible(h) && h.CUDAReady && h.Status == domain.BackendReady && s.unsafeGeneration == "" {
+			s.recovering = false
+		}
+		s.mu.Unlock()
 	}()
 
-	h, err = s.backend.Health(ctx)
 	if ctx.Err() != nil {
-		return Health{}, &domain.Failure{
-			Kind:  domain.BackendUnavailable,
-			Cause: ctx.Err(),
-		}
+		return Health{}, &domain.Failure{Kind: domain.BackendUnavailable, Cause: ctx.Err()}
 	}
-	return h, err
+	return s.backend.Health(ctx)
 }
 
 func (s *Service) observe() {
@@ -84,13 +98,7 @@ func (s *Service) observe() {
 	defer ticker.Stop()
 
 	for {
-		h, err := s.readHealth(s.observer)
-		s.mu.Lock()
-		s.health, s.healthErr, s.observed = h, err, time.Now()
-		if err == nil && s.compatible(h) && h.CUDAReady && h.Status == domain.BackendReady && s.unsafeGeneration == "" {
-			s.recovering = false
-		}
-		s.mu.Unlock()
+		_, _ = s.readHealth(s.observer)
 		s.logReadiness()
 		s.notify()
 		select {
@@ -152,9 +160,8 @@ func (s *Service) recoverBackend(t *ticket) error {
 		if ctx.Err() == nil && err == nil && s.compatible(h) && h.ProcessGeneration != t.generation {
 			// P02 creates the next generation only after old work is stopped and reaped.
 			s.mu.Lock()
-			s.health, s.healthErr, s.observed = h, nil, time.Now()
 			s.unsafeGeneration = ""
-			s.recovering = !h.CUDAReady || h.Status != domain.BackendReady
+			s.recovering = s.healthErr != nil || !s.compatible(s.health) || !s.health.CUDAReady || s.health.Status != domain.BackendReady
 			s.mu.Unlock()
 			s.logReadiness()
 			s.notify()

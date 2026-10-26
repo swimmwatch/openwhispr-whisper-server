@@ -266,6 +266,11 @@ func (e *retirementError) Unwrap() error {
 // Only Run calls retire. Infer waits for retired, never waits/reaps independently.
 func (s *Supervisor) retire(child *nativeChild) (result error) {
 	child.cancel()
+	// Close our idle health keepalives before the native server closes its side.
+	// Its SO_REUSEPORT-only sockets otherwise leave native-port TIME_WAIT that
+	// our exclusive availability check cannot rebind. Signaling/reaping below,
+	// not closing this transport, still proves that native GPU work has stopped.
+	s.transport.CloseIdleConnections()
 
 	s.mu.Lock()
 	if child.retireAt.IsZero() {

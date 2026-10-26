@@ -9,12 +9,14 @@ Requirements: REQ-015, REQ-026, REQ-027, REQ-028.
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: in progress (2026-10-25). The user explicitly authorized the current
-changes, branch/commit/PR/merge after successful CI, publisher setup and
-`v0.1.0-rc.1` publication. Pinned specification check passed and the exact R01
-agreement below remained ready. No release has been published. The owner must
-provide the protected Docker Hub token; PR CI and all release checks remain
-required. GPU acceptance and stable publication are outside this invocation.
+Status: complete (2026-10-25): `v0.1.0-rc.2` is published as
+`candidate_published_unqualified`. The user authorized the corrections,
+commit/push/PR/merge after successful CI, publisher setup and publication, then
+explicitly selected rc.2 because the existing rc.1 tag could not be moved.
+PR #9 and release run 40212576458 passed; all six distribution channels and
+GitHub assets passed anonymous read-back. Final pinned specification check passed
+and the exact R01 agreement remained ready. GPU acceptance and stable publication
+were not performed. See the execution evidence below and current handoff.
 
 All commands below run from the project root and use rtk. Named scripts/tests are **to create**, unless explicitly identified as existing. Write/run the discriminating check before the change; record relevant RED, correct implementation to GREEN, and PROVE newly written absence/wiring assertions with one reversible mutation when RED did not exercise them. A missing file/tool alone is not semantic RED. Restore all probes/mutations before final checks.
 
@@ -79,3 +81,46 @@ For each affected behavior stage, write and run its discriminating check first (
 3. Build/select immutable artifacts and publish the candidate through the authorized C02 harness.
 4. Read back GitHub metadata, both images/registries, OCI/classic chart bytes/index and attestations anonymously.
 5. Record candidate_published_unqualified only after all required checks pass; retain partial failure evidence and stop for GPU qualification.
+
+## Execution evidence — 2026-10-25
+
+- The user selected `v0.1.0-rc.2` after read-back showed the rc.1 tag already
+  existed. Neither tag was moved. Candidate source:
+  `3faa5cffa82917e590994cf1d2edcd2256d74c33` (merged PR #9).
+- Historical RED: [release 40199668493](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40199668493)
+  passed its builds/runtime/scans but failed inventory qualification before any
+  registry writes. The qualifier required a build field absent from scanner output.
+  PR #9 takes that field from the selected inventory and updates its behavior test.
+- GREEN: [PR #9](https://github.com/swimmwatch/openwhispr-whisper-server/pull/9)
+  [CI 40207794716](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40207794716)
+  passed all seven jobs, including runtime and final Security Check, before merge.
+  [Release 40212576458](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40212576458)
+  passed cold builds, runtime/license/Compose, all 22 fresh security targets and
+  every candidate publication job. Stable-only aliases were intentionally skipped.
+  Existing CI publisher/scanner denial fixtures passed; this continuation added
+  no behavior or absence/wiring assertion requiring another PROVE mutation.
+- Anonymous local read-back used an empty task-local Docker configuration and
+  isolated Helm settings: four `docker pull --platform linux/amd64` operations,
+  OCI and classic `helm pull`, manifest/config/SPDX/SLSA reads in every image
+  repository, and credential-free downloads of all three GitHub assets.
+  `sha256sum --check SHA256SUMS` and archive `cmp` passed. The chart rendered
+  successfully with each registry's exact image digests; normalized outputs match.
+- `tools/release/check.py --stage candidate` on the downloaded inventory returned
+  `candidate_published_unqualified`; `tools/security/check.py --stage complete`
+  passed the actual downloaded release security report. Tools ran with project
+  uv 0.13.5 / CPython 3.14.9; Helm 4.3.0 and Docker 29.9.2 performed local pulls.
+  The older uv on default PATH was not used after its version rejection. The
+  sandbox cache-access denial was retried through native approval, not bypassed.
+- Exact API/backend index digests, chart archive SHA256, separate chart OCI digest,
+  build/runtime identities and safe local evidence paths are in [handoff.md](handoff.md).
+  The earlier Pages index was empty, so no previous published chart was available
+  for a real older-version pull. Prior index/history preservation and denial/retry
+  behavior remain covered by the successful CI publisher fixtures.
+- GitHub metadata read-back confirms public pre-release, not draft and not latest.
+  The inventory has no GPU reports. Three applicable native MEDIUM findings remain
+  disclosed; zero blocking findings and zero coverage gaps is not zero findings.
+- Final MCP checks: pinned Approved/reviewed specification `pass`; exact R01
+  agreement `ready`, no issues. No runtime source, workflow, protection, global
+  agent setting, stable/latest alias or GPU/cluster workload changed in this
+  continuation beyond the already merged qualifier correction and authorized RC
+  publication. Subsequent packets remain unchecked and are not started.

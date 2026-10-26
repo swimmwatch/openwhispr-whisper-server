@@ -39,8 +39,8 @@ jobs:
 
     - name: Check Python formatting, lint and types
       run: |
-        uv run --no-sync python -m ruff format --check tools tests/tooling
-        uv run --no-sync python -m ruff check tools tests/tooling
+        uv run --no-sync python -m ruff format --check tools tests/tooling tests/acceptance
+        uv run --no-sync python -m ruff check tools tests/tooling tests/acceptance
         uv run --no-sync python -m mypy
 
     - name: Install checksum-verified CI executables
@@ -63,24 +63,30 @@ jobs:
       run: |
         gofmt -l internal > "$RUNNER_TEMP/gofmt-output"
         test ! -s "$RUNNER_TEMP/gofmt-output"
-        gofmt -l cmd tests/integration > "$RUNNER_TEMP/gofmt-runtime"
+        gofmt -l cmd tests/integration tests/acceptance > "$RUNNER_TEMP/gofmt-runtime"
         test ! -s "$RUNNER_TEMP/gofmt-runtime"
         go vet ./...
 
     - name: Install FFmpeg for real audio and API tests
+      timeout-minutes: 8
       env:
         FFMPEG_VERSION: ${{ env.CI_FFMPEG_VERSION }}
       run: |
-        sudo apt-get update
-        sudo apt-get install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
+        # Ubuntu sources use mirror+file indirection on the hosted runner.
+        # Change the actual mirror list, preserving signed sources and the package pin.
+        printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+        sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+        sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
         test "$(dpkg-query -W -f='${Version}' ffmpeg)" = "$FFMPEG_VERSION"
 
     - name: Test real Go foundation behavior and concurrency
       run: |
-        go test -race -vet=off ./cmd/... ./internal/... ./tests/integration -count=1 -parallel "$GOMAXPROCS"
+        go test -race -vet=off ./cmd/... ./internal/... ./tests/integration ./tests/acceptance -count=1 -parallel "$GOMAXPROCS"
 
     - name: Run tooling tests including the real secret scanner fixture
-      run: uv run --no-sync python -m unittest discover -s tests/tooling -v
+      run: |
+        uv run --no-sync python -m unittest discover -s tests/tooling -v
+        uv run --no-sync python -m unittest discover -s tests/acceptance -p 'test_*.py' -v
 
     - name: Lint all GitHub Actions workflows
       run: actionlint
