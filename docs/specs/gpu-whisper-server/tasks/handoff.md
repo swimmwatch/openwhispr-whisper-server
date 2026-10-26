@@ -1,5 +1,40 @@
 # Current handoff
 
+## Current directive — monitor follow-up, then P07 on rc.3
+
+The user explicitly selected this sequence on 2026-10-26: commit only the monitor
+approval-wake correction and rc.3 completion records in a separate PR/CI, then
+perform P07 against the published immutable rc.3 images. Preserve concurrent
+cache/action/CHANGELOG/release-document changes. P08, cluster operations and stable
+publication remain outside this invocation. No local rebuild can qualify rc.3;
+verify actual implemented test selectors before running the published suite.
+
+## Current completion — R01 rc.3 (2026-10-26, Europe/Moscow)
+
+**`v0.1.0-rc.3` is published and independently verified as
+`candidate_published_unqualified`.** The user explicitly approved PR #10 as the
+source and rc.3 as the new immutable version. Merged/tagged source is
+`a47647049ad69ae154e327d8d2536d650eaa4dee`; CI 40333890561 passed all seven jobs,
+and release 40347039761 passed every required candidate job. Stable-only aliases
+were intentionally skipped. All six channels and GitHub assets passed anonymous
+post-publication read-back; candidate/security gates and final MCP checks passed.
+
+See the [complete rc.3 report](<../../../verification/release-rc3.md>) for exact
+image/chart identities, actual commands, retained rc.2 index/archive proof,
+attestation limits and three disclosed nonblocking MEDIUM native advisories.
+No GPU report was added; full P07/P08 and current Electron compatibility remain
+incomplete. No stable/latest advancement or cluster deployment followed.
+
+The release pipeline has finished; no release watch or background job is needed.
+The local monitor correction now wakes on protected-environment `waiting`; all
+24 watcher tests, Ruff and mypy passed. Its three source/test/guide files and these
+completion records are submitted separately from preserved concurrent user
+cache/action/CHANGELOG/release-doc changes. Do not silently include those unrelated
+changes or move the rc.3 tag. R01 itself started no next packet; P07 is now separately
+selected by the subsequent user directive above.
+
+## Previous P07 local verification checkpoint (historical)
+
 Packet: **P07 — local server defect verification complete; full candidate acceptance incomplete (2026-10-26, Europe/Moscow)**.
 The user explicitly selected P07 after loading the matching
 `incremental-implementation` skill. Manual integrity and Git worktree checks

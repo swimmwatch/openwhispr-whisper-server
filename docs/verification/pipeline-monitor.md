@@ -12,9 +12,11 @@ It never selects the latest run, another attempt, another branch or an old
 successful release implicitly. The workflow-run head SHA is not a substitute for
 verifying the candidate tag/source and actual artifact identities.
 
-The Python probe uses bounded read-only GitHub API requests through `gh`. Pending
-and unarmed results are stable `wake: false` observations. A terminal run,
-identity mismatch, expired deadline or failed observation yields `wake: true`.
+The Python probe uses bounded read-only GitHub API requests through `gh`. Queued,
+running and unarmed results are stable `wake: false` observations. A terminal run,
+`waiting` state, identity mismatch, expired deadline or failed observation yields
+`wake: true`. A waiting run needs attention because a protected environment may
+require approval before the workflow can continue.
 Unknown/cancelled/skipped/timed-out outcomes never count as success. A workflow
 success only initiates artifact verification; it is not deployment, GPU
 qualification, or successful anonymous distribution read-back by itself.
@@ -23,8 +25,8 @@ The DSH durable command sentinel runs the probe on the server, without model
 turns. Its one-shot trigger observes any output/exit change from the fixed
 `{"wake":false}` baseline, without a regex filter. This also catches an unavailable
 interpreter, script crash or other monitor execution failure instead of silently
-waiting for JSON that cannot be produced. Intermediate queued, waiting or running
-states have identical output and do not wake the assistant. There is no model-side
+waiting for JSON that cannot be produced. Intermediate queued or running states
+have identical output and do not wake the assistant; `waiting` does wake it. There is no model-side
 sleep or status polling. A resident DSH process must be running for sentinel execution;
 if it is stopped, the saved subscription can resume when the resident process
 returns. The absolute deadline must not be reset when recovering a monitor.
@@ -37,8 +39,8 @@ The same event-driven mechanism is mandatory for both phases, not only release:
    head SHA, workflow ID, run ID and attempt. Use
    `.github/workflows/ci.yml` with event `pull_request` and arm the first watch.
 2. Return control immediately after the trigger is armed. Observe the whole run's
-   terminal outcome, not model-side polling of individual jobs. Queued, waiting
-   and running states require no assistant turn.
+   terminal outcome or actionable waiting, not model-side polling of individual
+   jobs. Queued and running states require no assistant turn.
 3. On CI failure, inspect that attempt, perform authorized fixes and affected
    local checks, push the correction, then arm a fresh watch for its actual CI
    run/head/attempt. Return control again; never follow a mutable latest run.
@@ -91,6 +93,21 @@ The corresponding DSH watch uses an absolute interpreter/script/selection path,
 a 60-second probe interval, one fire, and no output-pattern filter. Its wake note requires
 exact-attempt diagnosis, authorized correction, re-arming, then return to waiting.
 No API request is made while the selection is unarmed.
+
+## Protected-environment waiting
+
+On `pipeline_waiting_requires_attention`, inspect the exact run's pending
+deployments rather than claiming failure or success. For an explicitly authorized
+source/version/channel, use the normal approval API only if the current actor is
+an allowed reviewer. Do not disable protection, use administrative bypass, or
+approve a different source/version. A required independent reviewer remains a
+human-owned blocker and must be notified.
+
+After approval, confirm the run resumed and register a fresh one-shot subscription
+against the **existing armed selection**. Do not call `arm` again, create a new
+attempt, or extend the original deadline merely because an approval was needed.
+The same workflow may pause again for Pages or final release publication; those
+waiting states must also wake the assistant.
 
 ## Failure, correction and return to waiting
 

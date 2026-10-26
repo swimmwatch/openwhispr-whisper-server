@@ -388,6 +388,9 @@ def probe(path: Path) -> dict[str, Any]:
         if not matches_identity(target, run):
             return wake_result(target, "identity_mismatch")
         status, conclusion = observed_state(run)
+        if status == "waiting":
+            # Protected environments can require review before the run can finish.
+            return wake_result(target, "pipeline_waiting_requires_attention", status=status)
         if status in PENDING_STATUSES:
             return {"wake": False}
         return wake_result(
