@@ -22,13 +22,26 @@ func TestNativeResponseValidation(t *testing.T) {
 		status int
 		body   string
 		short  bool
+		drop   bool
 		valid  bool
+		text   string
 	}{
 		{
 			name:   "empty-text",
 			status: http.StatusOK,
 			body:   `{"text":""}`,
 			valid:  true,
+		},
+		{
+			name:   "complete-text",
+			status: http.StatusOK,
+			body:   `{"text":"complete response"}`,
+			valid:  true,
+			text:   "complete response",
+		},
+		{
+			name: "connection-loss-before-response",
+			drop: true,
 		},
 		{
 			name:   "status",
@@ -74,7 +87,13 @@ func TestNativeResponseValidation(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			wave := wavFixture()
+			calls := make(chan struct{}, 8)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				select {
+				case calls <- struct{}{}:
+				default:
+					t.Error("native POST replay exceeded observation capacity")
+				}
 				if r.URL.Path != "/inference" || r.Method != http.MethodPost {
 					t.Error("unexpected native route")
 				}
@@ -113,6 +132,15 @@ func TestNativeResponseValidation(t *testing.T) {
 					}
 				}
 
+				if scenario.drop {
+					connection, _, err := w.(http.Hijacker).Hijack()
+					if err != nil {
+						t.Error("cannot stage native connection loss")
+						return
+					}
+					connection.Close()
+					return
+				}
 				if scenario.short {
 					w.Header().Set("Content-Length", "1000")
 				}
@@ -142,9 +170,12 @@ func TestNativeResponseValidation(t *testing.T) {
 			}
 
 			result, err := s.callNative(&operation{ctx: context.Background()}, request)
+			if len(calls) != 1 {
+				t.Fatal("native submitted POST was replayed")
+			}
 			if scenario.valid {
-				if err != nil || result.Text != "" {
-					t.Fatalf("valid empty transcript rejected: %+v %v", result, err)
+				if err != nil || result.Text != scenario.text {
+					t.Fatal("complete native response was not preserved")
 				}
 			} else {
 				requireKind(t, err, domain.BackendUnavailable)

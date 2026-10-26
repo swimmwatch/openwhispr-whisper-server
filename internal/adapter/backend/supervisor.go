@@ -77,9 +77,28 @@ func New(opts Options) (*Supervisor, error) {
 	}
 	opts.Environment = slices.Clone(opts.Environment)
 
+	dialer := &net.Dialer{Timeout: min(nativeDialTimeout, opts.OperationTimeout)}
 	transport := &http.Transport{
-		Proxy:               nil,
-		DialContext:         (&net.Dialer{Timeout: min(nativeDialTimeout, opts.OperationTimeout)}).DialContext,
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			connection, err := dialer.DialContext(ctx, network, address)
+			if err != nil {
+				return nil, err
+			}
+			tcp, ok := connection.(*net.TCPConn)
+			if !ok {
+				_ = connection.Close()
+				return nil, errNative
+			}
+			// Only this private native transport uses abortive TCP close. Complete
+			// replies are read and validated normally; interrupted work is never
+			// replayed. A peer crash must not leave fixed-native-port TIME_WAIT.
+			if err := tcp.SetLinger(0); err != nil {
+				_ = connection.Close()
+				return nil, err
+			}
+			return connection, nil
+		},
 		MaxIdleConns:        nativeIdleConnections,
 		MaxIdleConnsPerHost: nativeIdleConnections,
 		IdleConnTimeout:     nativeIdleTimeout,

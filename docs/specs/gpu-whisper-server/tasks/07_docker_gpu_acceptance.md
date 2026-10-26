@@ -9,7 +9,14 @@ Requirements: REQ-001, REQ-002, REQ-004, REQ-005, REQ-006, REQ-007, REQ-011, REQ
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: planned; technically agreed (2026-10-22), not executed. Exact agreement below checked ready against the pinned Approved/reviewed specification. A separate incremental invocation, passing dependencies and any scoped external authority remain required. Preserve completed work; recheck source and agreement freshness before execution and completion.
+Status: in progress (2026-10-25), explicitly selected by the user. Matching
+incremental-implementation manual/Git/specification checks passed and the exact
+agreement below remained ready. Shared acceptance helpers and a real rc.2 Docker
+baseline are implemented; repeated requests exposed HTTP 503 not_ready failures.
+See [current handoff](handoff.md) and [sanitized rc.2 checkpoint](../../../verification/docker-rtx5070ti-rc2.md).
+The packet remains incomplete; no GPU qualification, new release, commit/push or
+P08 execution is claimed. Preserve R01 artifacts and renew affected acceptance on
+a new immutable RC after any runtime-input correction.
 
 Prerequisites: P05 and R01 passed their own checks; exact public candidate inventory/pulled image digests are fixed. The current machine actually has the named GPU, compatible driver/Docker NVIDIA integration and sufficient VRAM for chosen models. These are unverified runtime prerequisites, not inferred from a build or previous GPU listing. Read quality/scenarios.yaml environments/observation and all scenarios referencing P07; core/contracts.yaml runtime/private_backend/configuration.settings/delivery; contracts/openapi.yaml operations/errors. Requirement evidence: spec.md:35, :214, :236 and REQ-027/028.
 
@@ -111,3 +118,103 @@ For each affected behavior stage, write and run its discriminating check first (
 3. Run every format/client, lifecycle/queue/cancel/privacy/resource and Compose recipe on actual CUDA.
 4. Run configured retention and performance workloads; restore any isolated mutation and rerun exact candidate identities.
 5. Write sanitized independent Docker report with passed/failed/unrun checks; fixes requiring changed inputs return through a new RC.
+
+## Local pre-release stage — 2026-10-26 (not candidate qualification)
+
+The user explicitly requested fixing discovered defects and verifying locally
+before any corrected release. The frozen proposal/agreement is unchanged; P07
+remains unchecked. Local tests do not qualify unchanged rc.2 or authorize R01,
+commit/push, publication, tags/stable or P08/cluster operations.
+
+Final local runtime input identity:
+`sha256:2cbb5d9db5451a3cbba00d76af845f35e4e86454bfe113eca10bda45c99eddbd`.
+The [private local receipt](../../../../.local/p07/local-fixed-Wd6DfmOw/receipt.json)
+binds actual API/backend immutable digests and false release/publication flags.
+Earlier `f420…`/`5ad…` execution is historical only. See the
+[safe local report](../../../verification/docker-local-pre-release.md) for exact
+identities, commands/results, measurement caveats and remaining coverage.
+
+Stale owned-Busy completion and native TCP teardown/rebind defects are corrected.
+Private-native `SetLinger(0)` plus close-idle-before-stop preserve complete reply
+validation/no uncertain POST replay, fixed ports, capabilities, native source,
+exclusive foreign-socket guards and native group stop/Wait/reap ownership. Actual
+final-image lifecycle 8/8 passed in 45.14s, including native SIGKILL recovery 4.89s
+and reduced 3s operation deadline 408 `operation_timeout` in 3.521s plus fresh
+inference. No host sysctl, global trust or driver change was made.
+
+Final images passed baseline 60 and measured 60, bounds/isolation/marker checks,
+FIFO/overflow/waiting expiry/cancellation, API termination, absent-GPU fail-closed,
+counted HTTPS/cache/offline/prepared/tiny-model and deterministic unsupported-ftype
+init-failure paths. Actual CUDA SM/framebuffer activity was correlated to the
+native PID; serial resource snapshots and scoped model open/read/mapping trace
+recorded zero recurring model-path operations. No payload/argv buffers were dumped.
+Measured public median 99.443ms / p95 436.563ms include observer overhead and introduce
+no SLO. Native initialization-to-ready is not pure weight-file load.
+
+**Local server defect verification is complete, not full P07 acceptance.**
+The [final resumed command](<../../../../.local/p07/local-fixed-Wd6DfmOw/local-final-resumed.log>)
+completed in 144.277s with exit 1 solely on OpenWhispr Electron sandbox startup
+before HTTP; the command is not relabeled as an aggregate pass. All 51 public
+HTTP cases, both genuine OpenAI SDK representations and all server runtime/GPU,
+resource/model/lifecycle groups passed. The user clarified server HTTP checks as
+the current local-fix scope. Electron compatibility remains unverified for full
+P07; it does not block this server report or publication of an unqualified RC.
+No sandbox bypass, system helper installation or host policy change was made.
+
+Shared ordinary-input JFK speech checks require independent whole-word cues;
+request-count/media/error/nonempty guards remain. Temperature 1 is protocol-only,
+not lexical-quality qualification. Explicit public config/prepared/model/CA bind
+modes were exercised under `umask 077`; private evidence remains 0700/0600.
+Earlier rigid lexical and fixture failures and the interrupted permission-corrected
+recording remain retained as failed/incomplete. Source permits native fallback,
+not a proven cause of the lost original responses. Final measured evidence is
+[recorded separately](<../../../../.local/p07/run/local-1385521375/resident-measurements.json>).
+
+Full CPU race/vet, focused final harness race/vet, Ruff/mypy, actionlint and SDK12
+checks passed; the earlier tooling117 run disclosed12 C02/Helm fixture skips.
+The separately prepared pipeline monitor added23 passing behavioral tests; the
+combined tooling140 run passed with the same12 skips and full mypy40 sources.
+These are not candidate-security or distribution qualification. Full P07 still
+requires current genuine OpenWhispr compatibility, the prescribed absence/leak
+sensitivity, idle/retention/failure-envelope/comparison and immutable-channel
+checks not performed here. The parent next owns release preparation after explicit
+commit/push/publication authorization; no new workflow or publication has started.
+
+## Execution checkpoint — 2026-10-25
+
+The user selected only P07 after matching skill/manual verification. P05/R01
+candidate inputs were preserved. Restricted-session GPU access initially failed,
+then host and exact backend-container NVIDIA enumeration succeeded after the user
+changed session access policy, without changing the driver or global settings.
+
+Implemented shared HTTP/statistics/Compose helper slices, bounded official SDK
+probe and durable fault-server tests. Existing CI now validates their non-GPU
+behavior with the normal compiler, Ruff/mypy/unittest and native workflow lint;
+it still runs only on pull requests and does not launch GPU workloads. Required
+full target suite entry points/scenarios are not all implemented or executed yet.
+
+Actual unchanged rc.2 reached readiness and transcribed the pinned public JFK
+fixture. Its sixty-request steady baseline failed: 11 successes, 49 not_ready
+responses in the diagnostic run. All submitted private inference succeeded;
+backend health continued to return HTTP 200. Correct checks were not weakened.
+Deterministic application regressions reproduced stale owned-Busy health after
+completion and late observations. A narrow local correction serializes health
+commits and confirms fresh health before retiring that owner, without altering
+public/port contracts, FIFO, cancellation/recovery ownership or CUDA guards.
+Its additional bounded health read requires renewed real performance evidence.
+
+Final local evidence: full non-GPU Go suites with race and vet passed; readiness
+package race ten times; isolated PROVE failures detected and originals restored;
+locked Python format/lint/types passed; 117 tooling tests passed with 12 disclosed
+native C02/Helm fixture skips; 12 actual-SDK local fault tests passed without skips.
+Pinned actionlint 1.7.12 plus existing ShellCheck passed all three workflows.
+Optional Pyflakes was unavailable and is not counted as passed. Docker fake-CLI
+cancellation observation was corrected to arm its child before cancel; the initial
+missing-PID failure was not a production cleanup defect. See private evidence in
+`.local/p07/` and the sanitized report linked above.
+
+P07 remains unchecked. No replacement image was built/published and no tag moved;
+local unit success does not fix/qualify rc.2. Complete client/format/queue/failure,
+model-I/O/GPU/resource/privacy/retention/performance acceptance remains outstanding.
+A corrected immutable candidate must first come through a separately authorized
+R01 invocation. No P08, Home Lab, stable/latest, commit or push was performed.

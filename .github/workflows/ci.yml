@@ -39,8 +39,8 @@ jobs:
 
     - name: Check Python formatting, lint and types
       run: |
-        uv run --no-sync python -m ruff format --check tools tests/tooling
-        uv run --no-sync python -m ruff check tools tests/tooling
+        uv run --no-sync python -m ruff format --check tools tests/tooling tests/acceptance
+        uv run --no-sync python -m ruff check tools tests/tooling tests/acceptance
         uv run --no-sync python -m mypy
 
     - name: Install checksum-verified CI executables
@@ -63,7 +63,7 @@ jobs:
       run: |
         gofmt -l internal > "$RUNNER_TEMP/gofmt-output"
         test ! -s "$RUNNER_TEMP/gofmt-output"
-        gofmt -l cmd tests/integration > "$RUNNER_TEMP/gofmt-runtime"
+        gofmt -l cmd tests/integration tests/acceptance > "$RUNNER_TEMP/gofmt-runtime"
         test ! -s "$RUNNER_TEMP/gofmt-runtime"
         go vet ./...
 
@@ -77,10 +77,12 @@ jobs:
 
     - name: Test real Go foundation behavior and concurrency
       run: |
-        go test -race -vet=off ./cmd/... ./internal/... ./tests/integration -count=1 -parallel "$GOMAXPROCS"
+        go test -race -vet=off ./cmd/... ./internal/... ./tests/integration ./tests/acceptance -count=1 -parallel "$GOMAXPROCS"
 
     - name: Run tooling tests including the real secret scanner fixture
-      run: uv run --no-sync python -m unittest discover -s tests/tooling -v
+      run: |
+        uv run --no-sync python -m unittest discover -s tests/tooling -v
+        uv run --no-sync python -m unittest discover -s tests/acceptance -p 'test_*.py' -v
 
     - name: Lint all GitHub Actions workflows
       run: actionlint

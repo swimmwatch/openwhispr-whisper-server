@@ -4,10 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog 2.0.0](https://keepachangelog.com/en/2.0.0/),
 and this project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
-No release has been published; release dates and tag/comparison links will be
-added when releases exist.
+Pre-release candidates remain GPU-unqualified until both target acceptance suites pass.
 
-## Unreleased
+## [Unreleased]
+
+### Added
+
+- Shared acceptance HTTP workloads, measured latency/resource summaries, a bounded
+  canonical Compose target and an explicitly opted-in real GPU resident baseline.
+- Pinned official OpenAI SDK transport probe with bounded public fixtures,
+  deadlines, retry/redirect controls and sanitized client evidence.
+
+### Fixed
+
+- Refresh completed inference health under serialized observation ownership so a
+  cached or late owned-Busy response cannot reject the next healthy request.
+  Preserve nonblocking probes, dependency failure checks and operation deadlines.
+  This local correction requires a new immutable candidate and renewed GPU checks;
+  the published rc.2 artifacts are unchanged and remain GPU-unqualified.
+- Release owned private-native TCP connections during controlled stop and peer
+  failure so cancellation, operation deadlines and native crashes can recover
+  without native-port TIME_WAIT blocking replacement. Preserve exclusive foreign
+  port ownership, complete-response validation, no inference replay and bounded
+  process-group stop/reap; public transports and host network settings are unchanged.
+
+## [0.1.0-rc.2] - 2026-10-25
 
 ### Added
 
@@ -81,3 +102,6 @@ added when releases exist.
 ### Security
 
 - Update the pinned Go toolchain to 1.27.3 to address GO-2026-6809 in crypto/x509.
+
+[Unreleased]: https://github.com/swimmwatch/openwhispr-whisper-server/compare/v0.1.0-rc.2...HEAD
+[0.1.0-rc.2]: https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.2

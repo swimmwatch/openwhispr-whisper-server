@@ -92,7 +92,13 @@ func TestNativeChild(t *testing.T) {
 		_, _ = io.WriteString(w, `{"text":"fixture transcript"}`)
 	})
 
-	if err := http.ListenAndServe("127.0.0.1:"+port, mux); err != nil {
+	var serveErr error
+	if string(mode) == "reuse-port" {
+		serveErr = serveReusePortNative("127.0.0.1:"+port, mux)
+	} else {
+		serveErr = http.ListenAndServe("127.0.0.1:"+port, mux)
+	}
+	if serveErr != nil {
 		os.Exit(8)
 	}
 	os.Exit(0)
