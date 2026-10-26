@@ -1,8 +1,8 @@
 """Regression tests for actual SDK transport with generated, non-sensitive audio.
 
-Only the probe's expected fixture digest is replaced in test-owned processes.
-The bounded input validation and genuine SDK are unchanged. Real acceptance
-continues to require the unpatched public JFK fixture and actual service.
+The probe's expected fixture digest and optional client setup delays are patched
+only in test-owned processes. Input validation and genuine SDK transport remain
+unchanged. Real acceptance requires the public JFK fixture and actual service.
 """
 
 import hashlib
@@ -35,6 +35,7 @@ BOOTSTRAP = """
 import sys
 from unittest.mock import patch
 from tests.acceptance import openai_client
+{bootstrap_extension}
 with patch.object(openai_client, "JFK_SHA256", sys.argv.pop(1)):
     raise SystemExit(openai_client.main())
 """
@@ -86,7 +87,7 @@ class FaultHandler(BaseHTTPRequestHandler):
         elif server.mode == "empty":
             response = b'{"text": " "}'
         elif server.mode == "timeout":
-            server.stop.wait(2)
+            server.stop.wait(8)
         elif server.mode == "redirect":
             status = HTTPStatus.TEMPORARY_REDIRECT
         elif server.mode == "malformed":
@@ -130,15 +131,38 @@ def fault_server(mode: str) -> Iterator[FaultServer]:
             raise RuntimeError("Fault server did not stop")
 
 
+def slow_client_initialization(delay_seconds: float, state_file: Path | None = None) -> str:
+    """Delay, then delegate to the genuine SDK constructor in the child process."""
+    return f"""
+import time
+from pathlib import Path
+state_file = {str(state_file) if state_file is not None else None!r}
+real_openai = openai_client.OpenAI
+def delayed_openai(*args: object, **kwargs: object) -> object:
+    if state_file is not None:
+        Path(state_file).write_text("started")
+    time.sleep({delay_seconds!r})
+    client = real_openai(*args, **kwargs)
+    if state_file is not None:
+        Path(state_file).write_text("completed")
+    return client
+openai_client.OpenAI = delayed_openai
+"""
+
+
 def invoke(
-    server: FaultServer, audio: Path, *extra: str, timeout: float = 15
+    server: FaultServer,
+    audio: Path,
+    *extra: str,
+    timeout: float = 15,
+    bootstrap_extension: str = "",
 ) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ, OPENAI_LOG="debug", PYTHONUNBUFFERED="1")
     return subprocess.run(
         [
             sys.executable,
             "-c",
-            BOOTSTRAP,
+            BOOTSTRAP.format(bootstrap_extension=bootstrap_extension),
             SYNTHETIC_SHA256,
             "--base-url",
             f"http://127.0.0.1:{server.server_port}/v1",
@@ -299,20 +323,52 @@ class OfficialOpenAIProbeTests(unittest.TestCase):
     def test_actual_sdk_timeout_is_bounded_and_does_not_retry(self) -> None:
         with fault_server("timeout") as server:
             before = time.monotonic()
-            result = invoke(server, self.audio, "--timeout-seconds", "0.15")
-            self.assertNotEqual(result.returncode, 0)
+            # Include cold SDK setup, but expire before the server finishes its response.
+            result = invoke(server, self.audio, "--timeout-seconds", "2", timeout=6)
+            self.assertEqual(result.returncode, 1)
             self.assertLess(time.monotonic() - before, 5)
+            self.assertEqual(json.loads(result.stderr)["code"], "client_timeout")
             self.assertEqual(len(server.requests), 1)
-            self.assertNotIn(TEXT, result.stdout + result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertNotIn(TEXT, result.stderr)
+            self.assertNotIn("unused-local-test", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_absolute_deadline_interrupts_slow_client_initialization(self) -> None:
+        with fault_server("json") as server:
+            state_file = self.work / "initialization-state"
+            before = time.monotonic()
+            result = invoke(
+                server,
+                self.audio,
+                "--timeout-seconds",
+                "2",
+                timeout=6,
+                bootstrap_extension=slow_client_initialization(8, state_file),
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertLess(time.monotonic() - before, 5)
+            self.assertEqual(state_file.read_text(), "started")
+            self.assertEqual(json.loads(result.stderr)["code"], "client_timeout")
+            self.assertEqual(server.requests, [])
+            self.assertEqual(result.stdout, "")
+            self.assertNotIn(TEXT, result.stderr)
+            self.assertNotIn("unused-local-test", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
 
     def test_trickled_response_cannot_extend_absolute_deadline(self) -> None:
         with fault_server("drip") as server:
             before = time.monotonic()
-            result = invoke(server, self.audio, "--timeout-seconds", "0.15")
-            self.assertNotEqual(result.returncode, 0)
+            # Include cold SDK setup, but expire before the server finishes its response.
+            result = invoke(server, self.audio, "--timeout-seconds", "2", timeout=6)
+            self.assertEqual(result.returncode, 1)
             self.assertLess(time.monotonic() - before, 5)
+            self.assertEqual(json.loads(result.stderr)["code"], "client_timeout")
             self.assertEqual(len(server.requests), 1)
-            self.assertNotIn(TEXT, result.stdout + result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertNotIn(TEXT, result.stderr)
+            self.assertNotIn("unused-local-test", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
 
     def test_nonlocal_route_shapes_and_credentials_never_upload(self) -> None:
         with fault_server("json") as server:
