@@ -140,7 +140,7 @@ class PipelineWatchTests(unittest.TestCase):
         before = self.selection.stat()
         contents = self.selection.read_bytes()
         files = sorted(self.root.iterdir())
-        for status in ("waiting", "queued", "requested", "pending", "in_progress"):
+        for status in ("queued", "requested", "pending", "in_progress"):
             with self.subTest(status=status):
                 self.observation["status"] = status
                 with patch.object(watch, "fetch_run", return_value=self.observation):
@@ -148,6 +148,17 @@ class PipelineWatchTests(unittest.TestCase):
         self.assertEqual(self.selection.read_bytes(), contents)
         self.assertEqual(self.selection.stat().st_mtime_ns, before.st_mtime_ns)
         self.assertEqual(sorted(self.root.iterdir()), files)
+
+    def test_waiting_for_protected_environment_wakes_before_completion(self) -> None:
+        self.arm()
+        self.observation["status"] = "waiting"
+        with patch.object(watch, "fetch_run", return_value=self.observation):
+            code, result, stderr = self.cli("probe", "--selection", str(self.selection))
+        self.assertEqual((code, stderr), (0, ""))
+        self.assertTrue(result["wake"])
+        self.assertEqual(result["reason"], "pipeline_waiting_requires_attention")
+        self.assertEqual(result["status"], "waiting")
+        self.assertIsNone(result["conclusion"])
 
     def test_terminal_conclusions_wake_and_never_claim_qualification(self) -> None:
         self.arm()

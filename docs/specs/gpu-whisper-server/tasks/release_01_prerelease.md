@@ -9,7 +9,18 @@ Requirements: REQ-015, REQ-026, REQ-027, REQ-028.
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: complete (2026-10-25): `v0.1.0-rc.2` is published as
+Status: complete (2026-10-26): `v0.1.0-rc.3` is published and independently
+retrievable as `candidate_published_unqualified`. Explicit source/version approval
+selected merged PR #10, commit `a47647049ad69ae154e327d8d2536d650eaa4dee`.
+CI 40333890561 passed all seven required jobs; release 40347039761 passed clean
+builds, runtime checks, selected security qualification and every required channel.
+Independent anonymous image/chart pulls, attestations, prior-index preservation,
+GitHub assets/checksums and existing candidate/security gates passed. Exact
+identities, boundaries and receipts are in the [rc.3 report](<../../../verification/release-rc3.md>).
+Final pinned MCP specification is fresh and the exact R01 agreement remains ready.
+Full P07/P08 and stable remain incomplete; no cluster action was performed.
+
+Previous completed invocation (2026-10-25): `v0.1.0-rc.2` is published as
 `candidate_published_unqualified`. The user authorized the corrections,
 commit/push/PR/merge after successful CI, publisher setup and publication, then
 explicitly selected rc.2 because the existing rc.1 tag could not be moved.

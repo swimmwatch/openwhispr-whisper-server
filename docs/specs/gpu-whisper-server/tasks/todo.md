@@ -2,7 +2,21 @@
 
 Status: I01, I02, I03, C01, F01, P01–P06 and C02 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Hosted CI/security qualification and R01 pre-release publication are complete. Cluster/GPU/CNI acceptance, stable publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
 
-## Current hosted qualification — 2026-10-25
+## Current R01 completion — 2026-10-26
+
+[v0.1.0-rc.3](https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.3)
+is `candidate_published_unqualified` from merged PR #10, source
+`a47647049ad69ae154e327d8d2536d650eaa4dee`.
+[CI 40333890561](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40333890561)
+and [release 40347039761](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40347039761)
+passed their required checks. Independent anonymous four-image pulls, both chart
+channels, GitHub assets, attestations, retained rc.2 index/archive, both registry
+renders and candidate/security gates passed. Final MCP specification/agreement
+checks passed. See the [rc.3 report](<../../../verification/release-rc3.md>).
+Only R01 publication is complete; P07/P08 GPU qualification, P09 and R02 remain
+unchecked. Existing published tags/bytes were preserved; no stable or cluster action.
+
+## Previous hosted qualification — 2026-10-25
 
 C02 is complete. [Trusted main CI 40138859398](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40138859398) passed all seven required
 jobs on source `76279e618a2692551bbdad48d2dd77461ad4b530`, including both cold image builds,
