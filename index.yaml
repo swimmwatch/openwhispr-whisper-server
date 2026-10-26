@@ -10,6 +10,36 @@ entries:
       org.opencontainers.image.documentation: https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/releases.md#helm-chart-metadata
       org.opencontainers.image.licenses: Apache-2.0
     apiVersion: v2
+    appVersion: 0.1.0-rc.3
+    created: '2026-10-26T17:10:50.109814247Z'
+    description: Resident Whisper API with dedicated CUDA backend pairs
+    digest: 5ed39898d44e087e1947456803a0b8e94467811f8cce8284e9bf83e49537ae35
+    home: https://github.com/swimmwatch/openwhispr-whisper-server
+    keywords:
+    - whisper
+    - speech-to-text
+    - transcription
+    - cuda
+    - gpu
+    maintainers:
+    - name: swimmwatch
+      url: https://github.com/swimmwatch
+    name: whisper-server
+    sources:
+    - https://github.com/swimmwatch/openwhispr-whisper-server
+    type: application
+    urls:
+    - https://swimmwatch.github.io/openwhispr-whisper-server/whisper-server-0.1.0-rc.3.tgz
+    version: 0.1.0-rc.3
+  - annotations:
+      artifacthub.io/category: ai-machine-learning
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: "- name: Documentation\n  url: https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/releases.md#helm-chart-metadata\n\
+        - name: Chart source\n  url: https://github.com/swimmwatch/openwhispr-whisper-server/tree/main/charts/whisper-server\n\
+        - name: support\n  url: https://github.com/swimmwatch/openwhispr-whisper-server/issues\n"
+      org.opencontainers.image.documentation: https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/releases.md#helm-chart-metadata
+      org.opencontainers.image.licenses: Apache-2.0
+    apiVersion: v2
     appVersion: 0.1.0-rc.2
     created: '2026-10-25T18:04:07.341610438Z'
     description: Resident Whisper API with dedicated CUDA backend pairs
