@@ -14,8 +14,12 @@ import (
 // This focused negative deliberately omits GPU allocation from the exact local
 // backend image. It is not a replacement Compose recipe or positive GPU evidence.
 func TestLocalGPUUnavailable(t *testing.T) {
-	e := openLocalEnvironment(t, nil)
-	args := []string{"create", "--runtime", "runc", "--network", "none", "--read-only", "--user", "10001:10001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--env", "NVIDIA_VISIBLE_DEVICES=void", "--mount", "type=bind,source=" + e.config + ",target=/etc/whisper/config.json,readonly", "--mount", "type=bind,source=" + e.prepared + ",target=/prepared,readonly", "--tmpfs", "/tmp:rw,nosuid,noexec,size=64m,uid=10001,gid=10001", "--tmpfs", "/models:rw,nosuid,noexec,size=2m,uid=10001,gid=10001", e.receipt.BackendImage, "--config", "/etc/whisper/config.json"}
+	runGPUUnavailable(t, openLocalEnvironment(t, nil))
+}
+
+func runGPUUnavailable(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
+	args := []string{"create", "--runtime", "runc", "--network", "none", "--read-only", "--user", "10001:10001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--env", "NVIDIA_VISIBLE_DEVICES=void", "--mount", "type=bind,source=" + e.config + ",target=/etc/whisper/config.json,readonly", "--mount", "type=bind,source=" + e.prepared + ",target=/prepared,readonly", "--tmpfs", "/tmp:rw,nosuid,noexec,size=64m,uid=10001,gid=10001", "--tmpfs", "/models:rw,nosuid,noexec,size=2m,uid=10001,gid=10001", e.selection.BackendImage, "--config", "/etc/whisper/config.json"}
 	data, err := e.target.run(e.ctx, "create no-GPU fault fixture", false, args...)
 	if err != nil {
 		t.Fatal(err)

@@ -31,7 +31,7 @@ func (r requestIdentityTransport) CloseIdleConnections() {
 	}
 }
 
-func identifiedLocalClient(t *testing.T, e *localEnvironment, id string) *PublicClient {
+func identifiedLocalClient(t *testing.T, e *acceptanceEnvironment, id string) *PublicClient {
 	t.Helper()
 	client, err := NewPublicClient(e.address, time.Duration(e.settings.Timeouts.OperationSeconds+e.settings.Timeouts.CleanupSeconds+5)*time.Second, 1<<20)
 	if err != nil {
@@ -62,7 +62,7 @@ func observedQueueIDs(logs []byte, event, prefix string) []string {
 	return ids
 }
 
-func waitLocalQueueEvent(t *testing.T, e *localEnvironment, event, id string) {
+func waitLocalQueueEvent(t *testing.T, e *acceptanceEnvironment, event, id string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -91,7 +91,7 @@ type asyncPublicReply struct {
 	err   error
 }
 
-func submitIdentified(t *testing.T, e *localEnvironment, ctx context.Context, id string, audio []byte, filename string) <-chan asyncPublicReply {
+func submitIdentified(t *testing.T, e *acceptanceEnvironment, ctx context.Context, id string, audio []byte, filename string) <-chan asyncPublicReply {
 	t.Helper()
 	client := identifiedLocalClient(t, e, id)
 	done := make(chan asyncPublicReply, 1)
@@ -103,7 +103,11 @@ func submitIdentified(t *testing.T, e *localEnvironment, ctx context.Context, id
 }
 
 func TestLocalInputBoundsAndIsolation(t *testing.T) {
-	e := openLocalEnvironment(t, nil)
+	runInputBoundsAndIsolation(t, openLocalEnvironment(t, nil))
+}
+
+func runInputBoundsAndIsolation(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
 	t.Run("exact_file_cap_and_one_byte_excess", func(t *testing.T) {
 		cap := e.settings.Limits.AudioBytes
 		if int64(len(e.audio))+8 > cap {
@@ -125,7 +129,7 @@ func TestLocalInputBoundsAndIsolation(t *testing.T) {
 		}
 	})
 	t.Run("decoded_duration_and_prompt_limits", func(t *testing.T) {
-		overlong := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, "jfk-901.flac"), e.settings.Limits.AudioBytes)
+		overlong := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-901.flac"), e.settings.Limits.AudioBytes)
 		reply, err := e.client.Transcribe(e.ctx, overlong, "overlong.flac", []FormField{{"model", "base"}})
 		if err != nil || reply.Status != http.StatusBadRequest || reply.ErrorCode != "audio_duration_limit" {
 			t.Fatal("verified 901-second lossless input did not reject without truncation")
@@ -137,7 +141,7 @@ func TestLocalInputBoundsAndIsolation(t *testing.T) {
 	})
 	t.Run("distinct_recordings_and_prompt_reset", func(t *testing.T) {
 		for _, name := range []string{"jfk-first.wav", "jfk-last.wav", "jfk-first.wav"} {
-			audio := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, name), e.settings.Limits.AudioBytes)
+			audio := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, name), e.settings.Limits.AudioBytes)
 			reply, err := e.client.Transcribe(e.ctx, audio, name, []FormField{{"model", "base"}, {"language", "en"}, {"temperature", "0"}})
 			if err != nil || reply.Status != http.StatusOK || reply.Text == "" {
 				t.Fatal("distinct recording did not transcribe")
@@ -177,8 +181,12 @@ func TestLocalInputBoundsAndIsolation(t *testing.T) {
 }
 
 func TestLocalFIFOAndQueuedCancellation(t *testing.T) {
-	e := openLocalEnvironment(t, func(settings *config.Settings) { settings.Queue.WaitingCapacity = 2 })
-	longest := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
+	runFIFOAndQueuedCancellation(t, openLocalEnvironment(t, func(settings *config.Settings) { settings.Queue.WaitingCapacity = 2 }))
+}
+
+func runFIFOAndQueuedCancellation(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
+	longest := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
 	ctx, cancel := context.WithCancel(e.ctx)
 	defer cancel()
 	active := submitIdentified(t, e, ctx, "fifo-active", longest, "longest.flac")

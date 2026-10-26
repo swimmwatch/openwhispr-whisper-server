@@ -9,14 +9,19 @@ Requirements: REQ-001, REQ-002, REQ-004, REQ-005, REQ-006, REQ-007, REQ-011, REQ
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: in progress (2026-10-25), explicitly selected by the user. Matching
-incremental-implementation manual/Git/specification checks passed and the exact
-agreement below remained ready. Shared acceptance helpers and a real rc.2 Docker
-baseline are implemented; repeated requests exposed HTTP 503 not_ready failures.
-See [current handoff](handoff.md) and [sanitized rc.2 checkpoint](../../../verification/docker-rtx5070ti-rc2.md).
-The packet remains incomplete; no GPU qualification, new release, commit/push or
-P08 execution is claimed. Preserve R01 artifacts and renew affected acceptance on
-a new immutable RC after any runtime-input correction.
+Status: in progress (2026-10-26). The user selected direct server HTTP/GPU
+verification of published rc.3 and explicitly excluded Desktop/Electron execution.
+That selected stage passed on the exact GHCR images, with additional Docker Hub
+HTTP/lifecycle recipes; see the [rc.3 server report](<../../../verification/docker-rc3-http.md>).
+The new published-target wiring preserves strict local-only guards and records
+actual candidate/configuration/container identities. Baseline, 51 public request
+cases, bounds/isolation, FIFO/cancel/deadlines, recovery/shutdown, SDK HTTP and
+resident/CUDA/model-I/O observation slices passed. This is not a complete P07 pass.
+The full packet remains unchecked: required cache/idle/envelope/sensitivity and
+comparison coverage is outstanding, and Desktop interoperability is not claimed.
+No P08, stable or cluster execution follows. The earlier
+[rc.2 failures](<../../../verification/docker-rtx5070ti-rc2.md>) remain historical;
+rc.3's tag/source/artifact bytes were not altered by these checks.
 
 Prerequisites: P05 and R01 passed their own checks; exact public candidate inventory/pulled image digests are fixed. The current machine actually has the named GPU, compatible driver/Docker NVIDIA integration and sufficient VRAM for chosen models. These are unverified runtime prerequisites, not inferred from a build or previous GPU listing. Read quality/scenarios.yaml environments/observation and all scenarios referencing P07; core/contracts.yaml runtime/private_backend/configuration.settings/delivery; contracts/openapi.yaml operations/errors. Requirement evidence: spec.md:35, :214, :236 and REQ-027/028.
 

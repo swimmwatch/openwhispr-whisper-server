@@ -77,7 +77,7 @@ func lifecycleDeadlineFacts(result lifecycleCallResult, before, busy DockerSnaps
 	return fact
 }
 
-func recordLifecycleDeadlineFacts(t *testing.T, e *localEnvironment, result lifecycleCallResult, before, busy DockerSnapshot) {
+func recordLifecycleDeadlineFacts(t *testing.T, e *acceptanceEnvironment, result lifecycleCallResult, before, busy DockerSnapshot) {
 	t.Helper()
 	fact := lifecycleDeadlineFacts(result, before, busy)
 	fact.OperationSeconds = e.settings.Timeouts.OperationSeconds
@@ -99,18 +99,18 @@ func TestLifecycleDeadlineFactsPreserveCausesWithoutContents(t *testing.T) {
 	}
 }
 
-// writeAndRecreateLocal changes the existing bind inode, validates through the
+// writeAndRecreate changes the existing bind inode, validates through the
 // real loader, and refreshes only this environment's pair/address/client. It does
 // not require readiness: callers may deliberately test runtime startup failure.
-func writeAndRecreateLocal(t *testing.T, e *localEnvironment, settings config.Settings) {
+func writeAndRecreate(t *testing.T, e *acceptanceEnvironment, settings config.Settings) {
 	t.Helper()
-	if err := reconfigureLifecycleLocal(e.ctx, e, settings); err != nil {
+	if err := reconfigureLifecycle(e.ctx, e, settings); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(e.client.Close)
 }
 
-func reconfigureLifecycleLocal(ctx context.Context, e *localEnvironment, settings config.Settings) error {
+func reconfigureLifecycle(ctx context.Context, e *acceptanceEnvironment, settings config.Settings) error {
 	data, err := json.Marshal(settings)
 	if err != nil {
 		return errors.New("cannot encode local lifecycle settings")
@@ -135,10 +135,16 @@ func reconfigureLifecycleLocal(ctx context.Context, e *localEnvironment, setting
 	if err := e.target.Recreate(ctx); err != nil {
 		return err
 	}
-	return refreshLifecycleClient(ctx, e)
+	if err := refreshLifecycleClient(ctx, e); err != nil {
+		return err
+	}
+	if e.selection.Scope == publishedAcceptanceScope {
+		return recordPublishedBinding(ctx, e)
+	}
+	return nil
 }
 
-func refreshLifecycleClient(ctx context.Context, e *localEnvironment) error {
+func refreshLifecycleClient(ctx context.Context, e *acceptanceEnvironment) error {
 	address, err := e.target.APIAddress(ctx)
 	if err != nil {
 		return err
@@ -276,7 +282,7 @@ type lifecycleTrace struct {
 	Err                                                                                         error `json:"-"`
 }
 
-func watchLifecycleReplacement(t *testing.T, e *localEnvironment, before DockerSnapshot) func() lifecycleTrace {
+func watchLifecycleReplacement(t *testing.T, e *acceptanceEnvironment, before DockerSnapshot) func() lifecycleTrace {
 	t.Helper()
 	old := *before.NativeHostPID
 	identity, err := lifecyclePIDStart(old)
@@ -398,7 +404,7 @@ type lifecycleCallResult struct {
 	err   error
 }
 
-func startLifecycleCall(t *testing.T, e *localEnvironment, audio []byte, filename string) *lifecycleCall {
+func startLifecycleCall(t *testing.T, e *acceptanceEnvironment, audio []byte, filename string) *lifecycleCall {
 	t.Helper()
 	ctx, cancel := context.WithCancel(e.ctx)
 	call := &lifecycleCall{cancel: cancel, done: make(chan lifecycleCallResult, 1)}
@@ -432,7 +438,7 @@ func awaitLifecycleCall(t *testing.T, call *lifecycleCall, budget time.Duration)
 	}
 }
 
-func readyLifecycleSnapshot(t *testing.T, e *localEnvironment) DockerSnapshot {
+func readyLifecycleSnapshot(t *testing.T, e *acceptanceEnvironment) DockerSnapshot {
 	t.Helper()
 	snapshot, err := e.target.Observe(e.ctx)
 	if err != nil {
@@ -448,7 +454,7 @@ func readyLifecycleSnapshot(t *testing.T, e *localEnvironment) DockerSnapshot {
 	return snapshot
 }
 
-func waitLifecycleBusy(t *testing.T, e *localEnvironment, call *lifecycleCall, generation string) DockerSnapshot {
+func waitLifecycleBusy(t *testing.T, e *acceptanceEnvironment, call *lifecycleCall, generation string) DockerSnapshot {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(e.ctx, time.Duration(e.settings.Timeouts.OperationSeconds)*time.Second)
 	defer cancel()
@@ -518,13 +524,13 @@ func waitLifecycleUnready(parent context.Context, address string, unreachable bo
 	}
 }
 
-func waitLifecycleHealthy(t *testing.T, e *localEnvironment) {
+func waitLifecycleHealthy(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
 	if err := waitLocalReady(e.ctx, e.target, e.address, time.Duration(e.settings.Timeouts.ProvisioningSeconds)*time.Second); err != nil {
 		t.Fatal(err)
 	}
 }
-func nextLifecycleValid(t *testing.T, e *localEnvironment) {
+func nextLifecycleValid(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
 	reply, err := e.client.Transcribe(e.ctx, e.audio, "jfk.wav", []FormField{{"model", e.settings.Models.Served}, {"language", "en"}, {"temperature", "0"}})
 	if err != nil || reply.Status != http.StatusOK || strings.TrimSpace(reply.Text) == "" || !identifiedPublicSpeech(reply.Text) {
@@ -532,7 +538,7 @@ func nextLifecycleValid(t *testing.T, e *localEnvironment) {
 	}
 }
 
-func restoreLifecycleCase(t *testing.T, e *localEnvironment) {
+func restoreLifecycleCase(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
 	data, err := json.Marshal(e.settings)
 	if err != nil {
@@ -558,7 +564,7 @@ func restoreLifecycleCase(t *testing.T, e *localEnvironment) {
 				t.Log("bounded private lifecycle diagnostics unavailable", role)
 			}
 		}
-		if err := reconfigureLifecycleLocal(ctx, e, saved); err != nil {
+		if err := reconfigureLifecycle(ctx, e, saved); err != nil {
 			t.Error("cannot restore original lifecycle configuration and pair", err)
 			return
 		}
@@ -568,7 +574,7 @@ func restoreLifecycleCase(t *testing.T, e *localEnvironment) {
 	})
 }
 
-func lifecyclePreparedIdentity(e *localEnvironment) (string, error) {
+func lifecyclePreparedIdentity(e *acceptanceEnvironment) (string, error) {
 	file, err := os.Open(filepath.Join(e.prepared, "base.bin"))
 	if err != nil {
 		return "", errors.New("owned prepared model is unavailable")
@@ -582,20 +588,20 @@ func lifecyclePreparedIdentity(e *localEnvironment) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func lifecycleReport(t *testing.T, e *localEnvironment, name string, overrides map[string]any, trace *lifecycleTrace) {
+func lifecycleReport(t *testing.T, e *acceptanceEnvironment, name string, overrides map[string]any, trace *lifecycleTrace) {
 	t.Helper()
 	data, err := json.MarshalIndent(struct {
 		Scope, Case, RuntimeIdentity string
 		Overrides                    map[string]any
 		SampledObservation           *lifecycleTrace
 		ObservationLimit             string
-	}{"local_validation_not_release", name, e.receipt.RuntimeInputIdentity, overrides, trace, "100ms scheduled sampling plus CLI latency; gaps are counted; not continuous GPU overlap proof"}, "", "  ")
+	}{e.selection.Scope, name, e.selection.RuntimeInputIdentity, overrides, trace, "100ms scheduled sampling plus CLI latency; gaps are counted; not continuous GPU overlap proof"}, "", "  ")
 	if err != nil || os.WriteFile(filepath.Join(e.workdir, "lifecycle-"+name+".json"), data, 0600) != nil {
 		t.Fatal("cannot retain sanitized local lifecycle observations")
 	}
 }
 
-func lifecycleBackendInferenceCount(t *testing.T, e *localEnvironment) int {
+func lifecycleBackendInferenceCount(t *testing.T, e *acceptanceEnvironment) int {
 	t.Helper()
 	logs, err := e.target.Logs(e.ctx, "backend")
 	if err != nil {
@@ -641,7 +647,7 @@ func lifecycleTracePassed(t *testing.T, trace lifecycleTrace, replacementRequire
 	}
 }
 
-func lifecycleOldProcessGone(t *testing.T, e *localEnvironment, pid int, start string) {
+func lifecycleOldProcessGone(t *testing.T, e *acceptanceEnvironment, pid int, start string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(e.ctx, time.Duration(e.settings.Timeouts.CleanupSeconds)*time.Second)
 	defer cancel()
@@ -661,7 +667,7 @@ func lifecycleOldProcessGone(t *testing.T, e *localEnvironment, pid int, start s
 	}
 }
 
-func lifecycleOldGPUAllocationGone(t *testing.T, e *localEnvironment, pid int, start string) int {
+func lifecycleOldGPUAllocationGone(t *testing.T, e *acceptanceEnvironment, pid int, start string) int {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(e.ctx, time.Duration(e.settings.Timeouts.CleanupSeconds)*time.Second)
 	defer cancel()
@@ -686,7 +692,7 @@ func lifecycleOldGPUAllocationGone(t *testing.T, e *localEnvironment, pid int, s
 	}
 }
 
-func runLocalLifecycleCases(t *testing.T, e *localEnvironment) {
+func runLifecycleCases(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
 	t.Cleanup(func() {
 		if e.client != nil {
@@ -703,7 +709,7 @@ func runLocalLifecycleCases(t *testing.T, e *localEnvironment) {
 			settings.API.RateLimit.RequestsPerSecond = 0.01
 			settings.API.RateLimit.Burst = 1
 			settings.API.RateLimit.IdleSeconds = max(100, settings.API.RateLimit.IdleSeconds)
-			writeAndRecreateLocal(t, e, settings)
+			writeAndRecreate(t, e, settings)
 			waitLifecycleHealthy(t, e)
 			before := readyLifecycleSnapshot(t, e)
 			count := lifecycleBackendInferenceCount(t, e)
@@ -722,7 +728,7 @@ func runLocalLifecycleCases(t *testing.T, e *localEnvironment) {
 		{"active_client_cancel", func(t *testing.T) {
 			before := readyLifecycleSnapshot(t, e)
 			finish := watchLifecycleReplacement(t, e, before)
-			long := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
+			long := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
 			call := startLifecycleCall(t, e, long, "jfk-900.flac")
 			waitLifecycleBusy(t, e, call, before.PrivateHealth.ProcessGeneration)
 			call.cancel()
@@ -748,11 +754,11 @@ func runLocalLifecycleCases(t *testing.T, e *localEnvironment) {
 			originalOperationSeconds := e.settings.Timeouts.OperationSeconds
 			settings := e.settings
 			settings.Timeouts.OperationSeconds = 3
-			writeAndRecreateLocal(t, e, settings)
+			writeAndRecreate(t, e, settings)
 			waitLifecycleHealthy(t, e)
 			before := readyLifecycleSnapshot(t, e)
 			finish := watchLifecycleReplacement(t, e, before)
-			long := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
+			long := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
 			call := startLifecycleCall(t, e, long, "jfk-900.flac")
 			busy := waitLifecycleBusy(t, e, call, before.PrivateHealth.ProcessGeneration)
 			result := awaitLifecycleCall(t, call, time.Duration(e.settings.Timeouts.OperationSeconds+e.settings.Timeouts.CleanupSeconds+5)*time.Second)
@@ -776,7 +782,7 @@ func runLocalLifecycleCases(t *testing.T, e *localEnvironment) {
 		{"native_crash", func(t *testing.T) {
 			before := readyLifecycleSnapshot(t, e)
 			finish := watchLifecycleReplacement(t, e, before)
-			long := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
+			long := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
 			call := startLifecycleCall(t, e, long, "jfk-900.flac")
 			busy := waitLifecycleBusy(t, e, call, before.PrivateHealth.ProcessGeneration)
 			ids, err := e.target.Containers(e.ctx)
@@ -891,7 +897,7 @@ func runLocalLifecycleCases(t *testing.T, e *localEnvironment) {
 	}
 }
 
-func runLifecycleContainerDeath(t *testing.T, e *localEnvironment, role string) {
+func runLifecycleContainerDeath(t *testing.T, e *acceptanceEnvironment, role string) {
 	t.Helper()
 	before := readyLifecycleSnapshot(t, e)
 	finish := watchLifecycleReplacement(t, e, before)
@@ -932,7 +938,7 @@ func runLifecycleContainerDeath(t *testing.T, e *localEnvironment, role string) 
 	lifecycleReport(t, e, role+"-death", map[string]any{"explicit_component_restart": true, "fault_injected_while_idle": true}, &trace)
 }
 
-func verifyLifecycleScratch(t *testing.T, e *localEnvironment, before DockerSnapshot) {
+func verifyLifecycleScratch(t *testing.T, e *acceptanceEnvironment, before DockerSnapshot) {
 	t.Helper()
 	if err := lifecycleScratchStable(before, readyLifecycleSnapshot(t, e)); err != nil {
 		t.Fatal(err)
@@ -974,8 +980,8 @@ func TestLifecycleReconfigurePreservesBindAndDoesNotRequireReady(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &localEnvironment{ctx: ctx, target: target, settings: settings, workdir: dir, config: path}
-	if err := reconfigureLifecycleLocal(ctx, e, settings); err != nil {
+	e := &acceptanceEnvironment{ctx: ctx, target: target, settings: settings, workdir: dir, config: path}
+	if err := reconfigureLifecycle(ctx, e, settings); err != nil {
 		t.Fatal("runtime-unready reconfiguration was rejected", err)
 	}
 	after, err := os.Stat(path)

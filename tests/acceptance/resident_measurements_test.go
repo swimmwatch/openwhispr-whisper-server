@@ -51,7 +51,11 @@ func TestResidentResourceGuardDistinguishesUnknownAndRetainedFiles(t *testing.T)
 }
 
 func TestLocalResidentMeasurements(t *testing.T) {
-	e := openLocalEnvironment(t, nil)
+	runResidentMeasurements(t, openLocalEnvironment(t, nil))
+}
+
+func runResidentMeasurements(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
 	before, err := e.target.Observe(e.ctx)
 	if err != nil || before.NativeHostPID == nil || before.PrivateHealth == nil || !before.PrivateHealth.CUDAReady || before.PrivateHealth.Model != "base" {
 		t.Fatal("actual native/CUDA/model/resource observations are unavailable")
@@ -59,7 +63,7 @@ func TestLocalResidentMeasurements(t *testing.T) {
 	if err := releasedAPIResources(before); err != nil {
 		t.Fatal(err)
 	}
-	stopTrace := startLocalModelTrace(t, e, before)
+	stopTrace := startModelTrace(t, e, before)
 	gpuContext, stopGPU := context.WithCancel(e.ctx)
 	t.Cleanup(stopGPU)
 	type gpuResult struct {
@@ -122,7 +126,7 @@ func TestLocalResidentMeasurements(t *testing.T) {
 			}
 		}
 	}()
-	longest := readLocalAudio(t, filepath.Join(e.receipt.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
+	longest := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
 	reply, err := e.client.Transcribe(e.ctx, longest, "longest.flac", []FormField{{"model", "base"}, {"language", "en"}, {"temperature", "0"}})
 	if err != nil || reply.Status != http.StatusOK || reply.Text == "" {
 		t.Fatal("actual exact-900-second decoded fixture did not transcribe")
@@ -214,7 +218,7 @@ func TestLocalResidentMeasurements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := json.MarshalIndent(map[string]any{"scope": "local_validation_not_release", "runtime_input_identity": e.receipt.RuntimeInputIdentity, "api_image": e.receipt.APIImage, "backend_image": e.receipt.BackendImage, "model_sha256": e.settings.Models.Catalog[0].Source.SHA256, "summary": summary, "gpu_activity": gpu.activity, "calibration_resource_peaks": calibrationPeaks, "repeat_resource_peaks": peaks, "idle_api": before.API, "idle_backend": before.Backend, "after_longest_api": calibrated.API, "after_longest_backend": calibrated.Backend, "api_after_blocks": blocks, "backend_after_blocks": backendBlocks, "model_path_operations": modelOperations, "model_load_observation": "native process initialization to CUDA-ready health interval; not pure weight-file I/O", "sampling": "serial resource snapshots separated by 250ms; GPU pmon 1s", "rate_limit_enabled": false, "logging": "debug", "longest_decoded_seconds": 900}, "", "  ")
+	report, err := json.MarshalIndent(map[string]any{"scope": e.selection.Scope, "runtime_input_identity": e.selection.RuntimeInputIdentity, "api_image": e.selection.APIImage, "backend_image": e.selection.BackendImage, "model_sha256": e.settings.Models.Catalog[0].Source.SHA256, "summary": summary, "gpu_activity": gpu.activity, "calibration_resource_peaks": calibrationPeaks, "repeat_resource_peaks": peaks, "idle_api": before.API, "idle_backend": before.Backend, "after_longest_api": calibrated.API, "after_longest_backend": calibrated.Backend, "api_after_blocks": blocks, "backend_after_blocks": backendBlocks, "model_path_operations": modelOperations, "model_load_observation": "native process initialization to CUDA-ready health interval; not pure weight-file I/O", "sampling": "serial resource snapshots separated by 250ms; GPU pmon 1s", "rate_limit_enabled": false, "logging": "debug", "longest_decoded_seconds": 900}, "", "  ")
 	if err != nil || os.WriteFile(filepath.Join(e.workdir, "resident-measurements.json"), report, 0600) != nil {
 		t.Fatal("cannot retain sanitized local resident observations")
 	}

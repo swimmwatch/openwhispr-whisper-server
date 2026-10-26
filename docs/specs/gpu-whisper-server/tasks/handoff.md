@@ -1,13 +1,35 @@
 # Current handoff
 
-## Current directive — monitor follow-up, then P07 on rc.3
+## Current server-only result — published rc.3 (2026-10-26, Europe/Moscow)
 
-The user explicitly selected this sequence on 2026-10-26: commit only the monitor
-approval-wake correction and rc.3 completion records in a separate PR/CI, then
-perform P07 against the published immutable rc.3 images. Preserve concurrent
-cache/action/CHANGELOG/release-document changes. P08, cluster operations and stable
-publication remain outside this invocation. No local rebuild can qualify rc.3;
-verify actual implemented test selectors before running the published suite.
+The user explicitly excluded Desktop/Electron and requested direct server HTTP
+checks. **That selected server stage passed**, not complete P07. Do not ask again
+for a desktop installation or run Electron under this scope.
+
+Published GHCR rc.3 passed its resident baseline (60/0), all 51 public wire cases,
+bounds/isolation, FIFO/cancellation/deadlines, eight lifecycle cases, both active
+API shutdown modes, model observation and no-GPU fail-closed. Genuine SDK JSON/text
+HTTP also passed without desktop execution. A separate longest-input/three-block
+measurement passed 60/0 with correlated native CUDA activity and zero observed
+recurring model-file operations. Docker Hub references separately passed the
+public matrix and lifecycle recipes. All three workload jobs finished exit 0 and
+were collected; owned acceptance containers were cleaned without volume deletion.
+See the [actual server report](<../../../verification/docker-rc3-http.md>).
+
+The published adapter/shared case increment and selected server report are
+recorded in a separate follow-up; the exact private tested harness snapshot is
+preserved. Full P07 cache/idle/envelope/sensitivity
+and comparison gaps remain explicit; its checkbox must stay unchecked. The
+monitor/report follow-up alone is committed as `29ea5fc` in
+[PR #11](https://github.com/swimmwatch/openwhispr-whisper-server/pull/11),
+[CI 40372264093](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40372264093).
+All seven required jobs passed on exact head `29ea5fc`; the one-shot watch has
+finished. The user then explicitly approved merging PR #11; it merged as
+`f83dc1a7f39854b800a65095fb6e5220864dea05` on 2026-10-26. The rc.3 tag still
+points to `a47647049ad69ae154e327d8d2536d650eaa4dee`; no artifact was republished.
+
+Preserve concurrent user cache/action/CHANGELOG/release-document changes and all
+published rc.3 bytes/tag. P08, cluster operations and stable remain unauthorized.
 
 ## Current completion — R01 rc.3 (2026-10-26, Europe/Moscow)
 
