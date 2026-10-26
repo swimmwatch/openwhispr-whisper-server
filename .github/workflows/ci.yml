@@ -72,9 +72,9 @@ jobs:
       env:
         FFMPEG_VERSION: ${{ env.CI_FFMPEG_VERSION }}
       run: |
-        # The runner's Azure mirror stalled package transfers until the job timed out.
-        # Keep Ubuntu's signed sources and package pin, but use its primary HTTPS mirror.
-        sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+        # Ubuntu sources use mirror+file indirection on the hosted runner.
+        # Change the actual mirror list, preserving signed sources and the package pin.
+        printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
         sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
         sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
         test "$(dpkg-query -W -f='${Version}' ffmpeg)" = "$FFMPEG_VERSION"
