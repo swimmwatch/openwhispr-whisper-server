@@ -68,11 +68,15 @@ jobs:
         go vet ./...
 
     - name: Install FFmpeg for real audio and API tests
+      timeout-minutes: 8
       env:
         FFMPEG_VERSION: ${{ env.CI_FFMPEG_VERSION }}
       run: |
-        sudo apt-get update
-        sudo apt-get install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
+        # The runner's Azure mirror stalled package transfers until the job timed out.
+        # Keep Ubuntu's signed sources and package pin, but use its primary HTTPS mirror.
+        sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+        sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+        sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --yes --no-install-recommends "ffmpeg=$FFMPEG_VERSION"
         test "$(dpkg-query -W -f='${Version}' ffmpeg)" = "$FFMPEG_VERSION"
 
     - name: Test real Go foundation behavior and concurrency
