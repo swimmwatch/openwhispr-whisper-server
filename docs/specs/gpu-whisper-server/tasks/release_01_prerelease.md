@@ -9,7 +9,14 @@ Requirements: REQ-015, REQ-026, REQ-027, REQ-028.
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: complete (2026-10-26): `v0.1.0-rc.3` is published and independently
+Current invocation: in progress (2026-10-27). rc.4 failed its pre-publication
+native advisory source-integrity check and made no distribution writes. The user
+explicitly selected a reviewed snapshot refresh, its PR/CI and new `v0.1.0-rc.5`;
+see the [actual failure and review](<../../../verification/release-rc4-failure.md>).
+The rc.4 tag stays immutable. rc.5 must pass all fresh candidate checks and channel
+read-backs before this invocation is complete; no Desktop/P08/stable follows.
+
+Previous invocation complete (2026-10-26): `v0.1.0-rc.3` is published and independently
 retrievable as `candidate_published_unqualified`. Explicit source/version approval
 selected merged PR #10, commit `a47647049ad69ae154e327d8d2536d650eaa4dee`.
 CI 40333890561 passed all seven required jobs; release 40347039761 passed clean
