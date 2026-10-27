@@ -30,7 +30,7 @@ wait "$trace_pid"
 
 // The observer joins only this backend PID namespace. It does not grant the
 // application privileges, alter host ptrace policy or expose native endpoints.
-func startLocalModelTrace(t *testing.T, e *localEnvironment, snapshot DockerSnapshot) func() (uint64, error) {
+func startModelTrace(t *testing.T, e *acceptanceEnvironment, snapshot DockerSnapshot) func() (uint64, error) {
 	t.Helper()
 	if snapshot.NativeNamespacePID == nil || snapshot.NativeHostPID == nil {
 		t.Fatal("native identities are required before model-I/O tracing")
@@ -59,7 +59,7 @@ func startLocalModelTrace(t *testing.T, e *localEnvironment, snapshot DockerSnap
 		}
 		args = append(args, "--mount", "type=bind,source="+path+",target="+target+",readonly")
 	}
-	args = append(args, e.receipt.BackendImage, "-c", modelObserverSession, "p07-observer", "/observer/strace", "-f", "-qq", "-yy", "-e", "trace=openat,read,pread64,recvfrom,mmap,munmap,close", "-e", "raw=read,pread64,recvfrom", "-p", strconv.Itoa(*snapshot.NativeNamespacePID))
+	args = append(args, e.selection.BackendImage, "-c", modelObserverSession, "p07-observer", "/observer/strace", "-f", "-qq", "-yy", "-e", "trace=openat,read,pread64,recvfrom,mmap,munmap,close", "-e", "raw=read,pread64,recvfrom", "-p", strconv.Itoa(*snapshot.NativeNamespacePID))
 	output, err := e.target.run(e.ctx, "create isolated model observer", false, args...)
 	if err != nil {
 		t.Fatal(err)
@@ -191,12 +191,16 @@ func modelPathOperations(trace []byte, model string, initialFDs ...int) (uint64,
 }
 
 func TestLocalModelObserver(t *testing.T) {
-	e := openLocalEnvironment(t, nil)
+	runModelObserver(t, openLocalEnvironment(t, nil))
+}
+
+func runModelObserver(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
 	snapshot, err := e.target.Observe(e.ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop := startLocalModelTrace(t, e, snapshot)
+	stop := startModelTrace(t, e, snapshot)
 	reply, err := e.client.Transcribe(e.ctx, e.audio, "jfk.wav", []FormField{{"model", "base"}, {"language", "en"}})
 	if err != nil || reply.Status != http.StatusOK {
 		t.Fatal("observer control transcription failed")

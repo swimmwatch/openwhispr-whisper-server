@@ -60,7 +60,8 @@ These opt-in tests exercise public/client, bounds/FIFO, reduced/default lifecycl
 fixed-model/cache and independently observed resident paths. They do not pull,
 publish or promote a candidate. Current failures and unrun assertions stay visible
 in the [local checkpoint](../../docs/verification/docker-local-pre-release.md).
-They are not the still-planned full P07/P08 qualification entry points.
+They retain their separate local-only receipt/target guards. They do not become
+published-candidate evidence merely because the same case helpers are reusable.
 
 ## Real candidate baseline
 
@@ -78,6 +79,78 @@ go test ./tests/acceptance -run '^TestDockerGPUResidentBaseline$' -count=1 -v -t
 This command starts only an isolated local canonical Compose project, not Kubernetes. It selects exact images from the inventory; it does not build/publish artifacts. Evidence/configuration remains under ignored `.local/p07/run/`. Owned containers/networks are removed; named model caches are retained. Deleting retained data is not automatic cleanup.
 
 The initial rc.2 run **failed** repeated requests with transient `not_ready` despite successful individual transcription and healthy backend responses. Do not add delays/retries, change the candidate bytes under its published version or call the packet complete. See the owning P07 packet and handoff for current recovery status.
+
+## Published candidate slices (partial P07, not qualification)
+
+`TestResidentSuite`, `TestClientCompatibility` and `TestResidentMeasurements` are
+real entry points. They reuse the same assertions as the local checks but select
+`NewDockerTarget`, never `NewLocalDockerTarget` or a relabeled local build receipt.
+No image build, registry pull, dependency installation or client environment repair
+is performed by the target adapter. The existing client helper still requires its
+already prepared locked SDK/Electron prerequisites.
+
+Prepare a private selection (directory 0700, file 0600) with absolute paths:
+
+```json
+{
+  "release_inventory": "/absolute/private/selected/channel-state.json",
+  "registry": "ghcr.io",
+  "base_file": "/absolute/private/public-models/base.bin",
+  "fixture_directory": "/absolute/private/public-jfk-derivatives"
+}
+```
+
+`registry` may instead be `docker.io`. The inventory must provide the candidate
+version, source SHA, build/runtime identities and both immutable image indexes.
+`tiny_file` is optional preparation metadata; no published tiny/cache recipe is
+implemented by this increment. Local scope/image/CA override fields are rejected.
+Base model copying checks the canonical checksum/size; the JFK WAV checksum is
+checked before target startup. Derivative cases keep their own pinned checks.
+Do not supply a stale Docker bridge or the local source-CA derivative to this mode.
+
+Put the **actual Go 1.27.3 bin directory** first in PATH; verify its version with
+`GOTOOLCHAIN=local go version`. Then, only after explicit target authorization and
+exclusive GPU ownership, run implemented server slices sequentially:
+
+```sh
+rtk proxy env P07_GPU_TESTS=1 P07_LOCAL_TESTS= \
+  P07_PUBLISHED_SELECTION=/absolute/private/published-selection.json \
+  GOTOOLCHAIN=local GOWORK=off GOCACHE="$PWD/.local/go-cache" \
+  go test ./tests/acceptance \
+    -run '^TestResidentSuite$/(baseline|public_contract|input_bounds_and_isolation|fifo_and_queued_cancellation|queued_deadline|lifecycle|active_api_shutdown|model_observer|gpu_unavailable)$' \
+    -count=1 -v -timeout=45m
+```
+
+Use `-run '^TestClientCompatibility$'` for the genuine SDK JSON/text and OpenWhispr
+transport group, or `-run '^TestResidentMeasurements$'` for the existing 900-second
+calibration/three-block/model-I/O/GPU-observed steady measurement slice. These are
+**partial results**, not a full P07 pass. For a server-only scope without Desktop,
+select `-run '^TestClientCompatibility$/^official-openai-(json|text)$'` to run only
+the genuine SDK HTTP requests; the Electron subtest is not invoked. The server
+`TestResidentSuite/public_contract` group never calls the client group. A subtest
+selector can deliberately omit required groups; that omission must remain visible
+in the acceptance report.
+
+An unfiltered opt-in `TestResidentSuite` fails its explicit
+`required_unimplemented_gates` subtest. In particular, counted HTTPS/cache/model
+recipes on the unchanged published backend are not implemented: the local CA
+image derivative cannot qualify the original candidate. Configured idle and
+retention/failure memory envelopes, remaining reload/raw-output/overlap PROVE
+mutations and concurrent performance/direct-native comparison remain outstanding.
+The selected server stage exercised Docker Hub public/lifecycle recipes separately;
+see the [published rc.3 report](../../docs/verification/docker-rc3-http.md).
+The full client gate still requires its authentic transport. User-selected
+server-only selectors do not invoke Desktop or claim that gate.
+
+Private `candidate-binding-*.json` receipts are emitted at startup, configuration
+recreation and final cleanup alongside each slice's reports under `.local/p07/run/`.
+They bind the R01 source/build/runtime/index identities and inventory/selection
+checksums to actual selected-reference image inspection, container engine image IDs,
+container IDs, mounted configuration bytes/effective settings and audio/model
+identities. Engine image IDs are **not** universally OCI config digests. Receipts
+always retain `qualification: not_established`; they contain no transcript/audio
+content and do not advance any release inventory. Canonical Compose, no-build/no-pull,
+bounded cleanup and cache retention remain unchanged.
 
 ## Official client transport probe
 

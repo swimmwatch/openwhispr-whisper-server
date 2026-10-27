@@ -34,29 +34,26 @@ type localBuildReceipt struct {
 	ReleaseQualified     bool   `json:"release_qualified"`
 }
 
-type localEnvironment struct {
-	ctx      context.Context
-	target   *DockerTarget
-	client   *PublicClient
-	settings config.Settings
-	receipt  localBuildReceipt
-	root     string
-	workdir  string
-	prepared string
-	config   string
-	address  string
-	audio    []byte
-	startup  time.Duration
+type acceptanceEnvironment struct {
+	ctx       context.Context
+	target    *DockerTarget
+	client    *PublicClient
+	settings  config.Settings
+	selection acceptanceSelection
+	testName  string
+	root      string
+	workdir   string
+	prepared  string
+	config    string
+	address   string
+	audio     []byte
+	startup   time.Duration
 }
 
-func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *localEnvironment {
+func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *acceptanceEnvironment {
 	t.Helper()
 	if os.Getenv("P07_LOCAL_TESTS") != "1" {
 		t.Skip("local GPU checks require explicit P07_LOCAL_TESTS=1 and a local-only build receipt")
-	}
-	root, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatal(err)
 	}
 	file, err := os.Open(os.Getenv("P07_LOCAL_RECEIPT"))
 	if err != nil {
@@ -68,24 +65,42 @@ func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *local
 	if readErr != nil || closeErr != nil || len(bytes) == 1<<20 || json.Unmarshal(bytes, &receipt) != nil || receipt.Scope != "local_validation_not_release" || receipt.RegistryPush || receipt.ReleaseQualified || receipt.RuntimeInputIdentity == "" {
 		t.Fatal("local verification requires a bounded, explicitly non-release receipt")
 	}
+	return openAcceptanceEnvironment(t, acceptanceSelection{
+		Scope: localAcceptanceScope, RuntimeInputIdentity: receipt.RuntimeInputIdentity,
+		APIImage: receipt.APIImage, BackendImage: receipt.BackendImage,
+		APIID: receipt.APIID, BackendID: receipt.BackendID,
+		BaseFile: receipt.BaseFile, TinyFile: receipt.TinyFile, FixtureDirectory: receipt.FixtureDirectory,
+	}, configure)
+}
+
+func openAcceptanceEnvironment(t *testing.T, selection acceptanceSelection, configure func(*config.Settings)) *acceptanceEnvironment {
+	t.Helper()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
 	settings, err := config.Load(nil, []string{})
 	if err != nil {
 		t.Fatal("canonical default settings could not be loaded")
 	}
 	runRoot := filepath.Join(root, ".local", "p07", "run")
 	if os.MkdirAll(runRoot, 0700) != nil {
-		t.Fatal("cannot create private local verification output directory")
+		t.Fatal("cannot create private acceptance output directory")
 	}
-	workdir, err := os.MkdirTemp(runRoot, "local-")
+	runPrefix, projectPrefix := "local-", "whisper-p07-local-"
+	if selection.Scope == publishedAcceptanceScope {
+		runPrefix, projectPrefix = "published-", "whisper-p07-published-"
+	}
+	workdir, err := os.MkdirTemp(runRoot, runPrefix)
 	if err != nil {
-		t.Fatal("cannot create local verification evidence directory")
+		t.Fatal("cannot create acceptance evidence directory")
 	}
 	prepared := filepath.Join(workdir, "prepared")
 	if os.Mkdir(prepared, 0755) != nil || os.Chmod(prepared, 0755) != nil {
 		t.Fatal("cannot create test-owned prepared directory")
 	}
 	base := settings.Models.Catalog[0]
-	copyPreparedModel(t, receipt.BaseFile, filepath.Join(prepared, "base.bin"), base.Source)
+	copyPreparedModel(t, selection.BaseFile, filepath.Join(prepared, "base.bin"), base.Source)
 	base.Source.Kind, base.Source.URL, base.Source.Path = "prepared", "", "/prepared/base.bin"
 	settings.Models.Catalog = []config.Model{base}
 	settings.Models.DownloadSet = []string{}
@@ -95,7 +110,7 @@ func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *local
 		configure(&settings)
 	}
 	if err := settings.Validate(); err != nil {
-		t.Fatal("selected local scenario settings are invalid")
+		t.Fatal("selected acceptance scenario settings are invalid")
 	}
 	configuration, err := json.Marshal(settings)
 	if err != nil {
@@ -103,26 +118,31 @@ func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *local
 	}
 	configPath := filepath.Join(workdir, "config.json")
 	if os.WriteFile(configPath, configuration, 0644) != nil || os.Chmod(configPath, 0644) != nil {
-		t.Fatal("cannot write isolated local scenario configuration")
+		t.Fatal("cannot write isolated acceptance scenario configuration")
 	}
 	if _, err := config.Load([]string{"--config", configPath}, []string{}); err != nil {
-		t.Fatal("generated local scenario configuration is rejected by the actual configuration loader")
+		t.Fatal("generated acceptance scenario configuration is rejected by the actual configuration loader")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 35*time.Minute)
 	t.Cleanup(cancel)
-	target, err := NewLocalDockerTarget(DockerOptions{
-		Root: root, Project: "whisper-p07-local-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		ConfigFile: configPath, PreparedDir: prepared, APIImage: receipt.APIImage, BackendImage: receipt.BackendImage,
+	target, err := newSelectedDockerTarget(selection, DockerOptions{
+		Root: root, Project: projectPrefix + strconv.FormatInt(time.Now().UnixNano(), 10),
+		ConfigFile: configPath, PreparedDir: prepared, APIImage: selection.APIImage, BackendImage: selection.BackendImage,
 		GPUDevice: "0", APIPort: settings.API.Port, BackendPort: settings.Backend.Port,
 		CommandTimeout: 2 * time.Minute, StopTimeoutSeconds: settings.Timeouts.ShutdownSeconds + settings.Timeouts.CleanupSeconds + 5,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	environment := &localEnvironment{ctx: ctx, target: target, settings: settings, receipt: receipt, root: root, workdir: workdir, prepared: prepared, config: configPath}
+	environment := &acceptanceEnvironment{ctx: ctx, target: target, settings: settings, selection: selection, testName: t.Name(), root: root, workdir: workdir, prepared: prepared, config: configPath}
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer stop()
+		if selection.Scope == publishedAcceptanceScope && target.owned {
+			if err := recordPublishedBinding(cleanup, environment); err != nil {
+				t.Error("final candidate binding failed", err)
+			}
+		}
 		for _, role := range []string{"api", "backend"} {
 			if logs, err := target.Logs(cleanup, role); err == nil {
 				_ = os.WriteFile(filepath.Join(workdir, role+".log"), logs, 0600)
@@ -132,6 +152,18 @@ func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *local
 			t.Error(err)
 		}
 	})
+	environment.audio = readLocalAudio(t, filepath.Join(selection.FixtureDirectory, "jfk.wav"), settings.Limits.AudioBytes)
+	identity := sha256.Sum256(environment.audio)
+	if hex.EncodeToString(identity[:]) != "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e" {
+		t.Fatal("real GPU checks require the pinned public JFK fixture")
+	}
+	if selection.Scope == publishedAcceptanceScope {
+		ids, err := selectedPublishedImageIDs(ctx, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		environment.selection.APIID, environment.selection.BackendID = ids["api"], ids["backend"]
+	}
 	started := time.Now()
 	if err := target.Up(ctx); err != nil {
 		t.Fatal(err)
@@ -144,10 +176,10 @@ func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *local
 		t.Fatal(err)
 	}
 	environment.startup = time.Since(started)
-	for role, expected := range map[string]string{"api": receipt.APIID, "backend": receipt.BackendID} {
+	for role, expected := range map[string]string{"api": environment.selection.APIID, "backend": environment.selection.BackendID} {
 		actual, err := target.Inspect(ctx, role)
 		if err != nil || actual.Image != expected || !actual.Running || !actual.ReadonlyRootFS || actual.User != "10001:10001" {
-			t.Fatal("running local component does not match selected immutable image or execution boundaries")
+			t.Fatal("running selected component does not match selected immutable image or execution boundaries")
 		}
 	}
 	environment.client, err = NewPublicClient(environment.address, time.Duration(settings.Timeouts.OperationSeconds+5)*time.Second, 1<<20)
@@ -155,12 +187,12 @@ func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *local
 		t.Fatal(err)
 	}
 	t.Cleanup(environment.client.Close)
-	environment.audio = readLocalAudio(t, filepath.Join(receipt.FixtureDirectory, "jfk.wav"), settings.Limits.AudioBytes)
-	identity := sha256.Sum256(environment.audio)
-	if hex.EncodeToString(identity[:]) != "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e" {
-		t.Fatal("real local GPU checks require the pinned public JFK fixture")
+	if selection.Scope == publishedAcceptanceScope {
+		if err := recordPublishedBinding(ctx, environment); err != nil {
+			t.Fatal(err)
+		}
 	}
-	t.Log("local pre-release verification only; published candidate qualification remains unchanged")
+	t.Log("selected acceptance slice only; full GPU qualification is not established")
 	return environment
 }
 
@@ -238,7 +270,11 @@ func waitLocalReady(ctx context.Context, target *DockerTarget, address string, b
 }
 
 func TestLocalResidentBaseline(t *testing.T) {
-	e := openLocalEnvironment(t, nil)
+	runResidentBaseline(t, openLocalEnvironment(t, nil))
+}
+
+func runResidentBaseline(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
 	before, err := e.target.Processes(e.ctx, "backend")
 	if err != nil {
 		t.Fatal(err)
@@ -280,24 +316,24 @@ func TestLocalResidentBaseline(t *testing.T) {
 		t.Fatal("resident native worker count changed")
 	}
 	summary.Startup = &e.startup
-	report, err := json.MarshalIndent(map[string]any{"scope": "local_validation_not_release", "runtime_input_identity": e.receipt.RuntimeInputIdentity, "api_image": e.receipt.APIImage, "backend_image": e.receipt.BackendImage, "settings": map[string]any{"rate_limit_enabled": false, "logging": e.settings.Logging.Level, "model": e.settings.Models.Served, "operation_seconds": e.settings.Timeouts.OperationSeconds}, "summary": summary}, "", "  ")
+	report, err := json.MarshalIndent(map[string]any{"scope": e.selection.Scope, "runtime_input_identity": e.selection.RuntimeInputIdentity, "api_image": e.selection.APIImage, "backend_image": e.selection.BackendImage, "settings": map[string]any{"rate_limit_enabled": false, "logging": e.settings.Logging.Level, "model": e.settings.Models.Served, "operation_seconds": e.settings.Timeouts.OperationSeconds}, "summary": summary}, "", "  ")
 	if err != nil || os.WriteFile(filepath.Join(e.workdir, "baseline.json"), report, 0600) != nil {
 		t.Fatal("cannot retain safe local baseline observations")
 	}
-	t.Log("local fixed-code baseline passed sixty sequential requests with one resident native worker; no release qualified")
+	t.Log("selected baseline passed sixty sequential requests with one resident native worker; no release qualified")
 }
 
 func TestLocalPublicAndClients(t *testing.T) {
 	e := openLocalEnvironment(t, nil)
 	t.Run("public_contract", func(t *testing.T) {
-		runPublicCases(t, e.ctx, e.client, e.receipt.FixtureDirectory, e.settings.Models.Served)
+		runPublicCases(t, e.ctx, e.client, e.selection.FixtureDirectory, e.settings.Models.Served)
 	})
 	t.Run("real_clients", func(t *testing.T) {
-		runClientCases(t, e.ctx, e.address, filepath.Join(e.receipt.FixtureDirectory, "jfk.wav"), e.workdir)
+		runClientCases(t, e.ctx, e.address, filepath.Join(e.selection.FixtureDirectory, "jfk.wav"), e.workdir)
 	})
 }
 
 func TestLocalLifecycle(t *testing.T) {
 	e := openLocalEnvironment(t, nil)
-	runLocalLifecycleCases(t, e)
+	runLifecycleCases(t, e)
 }

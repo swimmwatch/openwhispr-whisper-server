@@ -191,7 +191,26 @@ func TestDockerCLIHelper(t *testing.T) {
 		}
 	} else {
 		switch args[0] {
+		case "image":
+			var ids map[string]string
+			if json.Unmarshal([]byte(os.Getenv("P07_DOCKER_HELPER_IMAGE_IDS")), &ids) != nil || ids[args[len(args)-1]] == "" {
+				fail()
+			}
+			fmt.Println(ids[args[len(args)-1]])
 		case "inspect":
+			if input := os.Getenv("P07_DOCKER_HELPER_INSPECTIONS"); input != "" {
+				var states map[string]DockerInspection
+				if json.Unmarshal([]byte(input), &states) != nil {
+					fail()
+				}
+				for _, state := range states {
+					if state.ID == args[len(args)-1] {
+						json.NewEncoder(os.Stdout).Encode(state)
+						os.Exit(0)
+					}
+				}
+				fail()
+			}
 			json.NewEncoder(os.Stdout).Encode(DockerInspection{ID: dockerBackendID, Image: "sha256:" + strings.Repeat("3", 64), Reference: "backend@sha256:" + strings.Repeat("2", 64), PID: 1234, Running: true, StartedAt: time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC), User: "10001:10001", ReadonlyRootFS: true, Mounts: []DockerMount{{Type: "volume", Name: "p07-owned_model-cache", Destination: "/models", RW: true}}, DeviceRequests: []DockerDeviceRequest{{Driver: "nvidia", DeviceIDs: []string{"0"}, Capabilities: [][]string{{"gpu"}}}}})
 		case "logs":
 			fmt.Fprintln(os.Stderr, "private-log-marker")

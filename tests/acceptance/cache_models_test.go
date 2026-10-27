@@ -121,7 +121,7 @@ func TestCacheSourceFixtureCountsActualProvisioningAndOfflineDenial(t *testing.T
 
 // cacheLocalSource uses an explicitly selected bridge address. Its public CA is
 // mounted only in the owned prepared directory; the private key stays in memory.
-func cacheLocalSource(t *testing.T, e *localEnvironment, base config.Model) (*cacheModelSource, string) {
+func cacheLocalSource(t *testing.T, e *acceptanceEnvironment, base config.Model) (*cacheModelSource, string) {
 	t.Helper()
 	ip := net.ParseIP(os.Getenv("P07_LOCAL_SOURCE_BIND_IP"))
 	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
@@ -197,7 +197,7 @@ func TestCacheSourceTLSTrustAndDeniedAttemptObservation(t *testing.T) {
 	if os.WriteFile(filepath.Join(prepared, "base.bin"), data, 0600) != nil {
 		t.Fatal("cannot prepare owned source transport bytes")
 	}
-	e := &localEnvironment{prepared: prepared}
+	e := &acceptanceEnvironment{prepared: prepared}
 	model := config.Model{ID: "base", Source: config.Source{SHA256: hex.EncodeToString(identity[:]), ExpectedBytes: int64(len(data))}}
 	source, address := cacheLocalSource(t, e, model)
 	certificate, err := os.ReadFile(filepath.Join(prepared, "p07-source-ca.pem"))
@@ -258,7 +258,7 @@ func requireCacheSourceQuiet(t *testing.T, source *cacheModelSource, before cach
 	}
 }
 
-func cachedLocalSHA(t *testing.T, e *localEnvironment, source config.Source) string {
+func cachedLocalSHA(t *testing.T, e *acceptanceEnvironment, source config.Source) string {
 	t.Helper()
 	containers, err := e.target.Containers(e.ctx)
 	if err != nil {
@@ -275,7 +275,7 @@ func cachedLocalSHA(t *testing.T, e *localEnvironment, source config.Source) str
 	return fields[0]
 }
 
-func readyCacheModel(t *testing.T, e *localEnvironment, expected string) string {
+func readyCacheModel(t *testing.T, e *acceptanceEnvironment, expected string) string {
 	t.Helper()
 	if err := waitLocalReady(e.ctx, e.target, e.address, time.Duration(e.settings.Timeouts.ProvisioningSeconds)*time.Second); err != nil {
 		t.Fatal(err)
@@ -425,7 +425,7 @@ func TestCacheFailureProbeRetainsActualWireStatuses(t *testing.T) {
 // numeric/boolean: no response bodies, addresses, model names, paths or IDs leave
 // the observation. State codes: 0 unknown, 1 starting, 2 ready, 3 busy,
 // 4 recovering, 5 stopping, 6 failed. This does not relax the false-ready guard.
-func diagnoseCacheStartup(t *testing.T, e *localEnvironment, initialStatus int, nativeMustStart bool) {
+func diagnoseCacheStartup(t *testing.T, e *acceptanceEnvironment, initialStatus int, nativeMustStart bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -488,7 +488,7 @@ func diagnoseCacheStartup(t *testing.T, e *localEnvironment, initialStatus int, 
 	}
 }
 
-func unavailableCacheModel(t *testing.T, e *localEnvironment, nativeMustStart bool) {
+func unavailableCacheModel(t *testing.T, e *acceptanceEnvironment, nativeMustStart bool) {
 	t.Helper()
 	budget := time.Duration(e.settings.Timeouts.CleanupSeconds+e.settings.Timeouts.ShutdownSeconds+5) * time.Second
 	ctx, cancel := context.WithTimeout(e.ctx, budget)
@@ -575,7 +575,7 @@ func TestLocalCacheAndModels(t *testing.T) {
 			SourceCABackendImage string            `json:"source_ca_backend_image"`
 			OriginalBackendImage string            `json:"original_backend_image"`
 			Checks               []cacheLocalCheck `json:"observed_checks"`
-		}{"local_validation_not_release", e.receipt.RuntimeInputIdentity, caImage, originalImage, checks}, "", "  ")
+		}{"local_validation_not_release", e.selection.RuntimeInputIdentity, caImage, originalImage, checks}, "", "  ")
 		dir := filepath.Join(e.root, ".local", "p07", "cache")
 		if err != nil || os.MkdirAll(dir, 0700) != nil || os.WriteFile(filepath.Join(dir, "cache-models-"+filepath.Base(e.workdir)+".json"), data, 0600) != nil {
 			t.Error("cannot retain safe owned cache/model observations")
@@ -593,7 +593,7 @@ func TestLocalCacheAndModels(t *testing.T) {
 		e.ctx = cleanup
 		defer func() { e.ctx = previousContext }()
 		e.target.opts.BackendImage = originalImage
-		writeAndRecreateLocal(t, e, originalSettings)
+		writeAndRecreate(t, e, originalSettings)
 		readyCacheModel(t, e, base.ID)
 		if cachePopulated {
 			cachedLocalSHA(t, e, base.Source)
@@ -602,7 +602,7 @@ func TestLocalCacheAndModels(t *testing.T) {
 	change := func(t *testing.T, settings config.Settings) {
 		t.Helper()
 		modified = true
-		writeAndRecreateLocal(t, e, settings)
+		writeAndRecreate(t, e, settings)
 	}
 	observe := func(name, model string, before cacheSourceCounters, checksum string) {
 		checks = append(checks, cacheLocalCheck{Name: name, Model: model, Before: before, After: cacheCounters(source), CacheSHA256: checksum})
@@ -677,7 +677,7 @@ func TestLocalCacheAndModels(t *testing.T) {
 	}
 	if !t.Run("pinned_tiny_requires_configuration_restart", func(t *testing.T) {
 		tiny := config.Model{ID: "tiny", Source: config.Source{Kind: "prepared", Path: "/prepared/tiny.bin", SHA256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21", ExpectedBytes: 77691713}}
-		copyPreparedModel(t, e.receipt.TinyFile, filepath.Join(e.prepared, "tiny.bin"), tiny.Source)
+		copyPreparedModel(t, e.selection.TinyFile, filepath.Join(e.prepared, "tiny.bin"), tiny.Source)
 		settings := prepared
 		settings.Models.Catalog, settings.Models.Served = []config.Model{tiny, trap}, tiny.ID
 		before := cacheCounters(source)
