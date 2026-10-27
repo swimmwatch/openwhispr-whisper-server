@@ -9,10 +9,15 @@ Requirements: REQ-001, REQ-002, REQ-004, REQ-005, REQ-006, REQ-007, REQ-011, REQ
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: in progress (2026-10-26). The user selected direct server HTTP/GPU
-verification of published rc.3 and explicitly excluded Desktop/Electron execution.
-That selected stage passed on the exact GHCR images, with additional Docker Hub
-HTTP/lifecycle recipes; see the [rc.3 server report](<../../../verification/docker-rc3-http.md>).
+Status: in progress; the selected server-only stage passed again on published
+rc.5 (2026-10-27). The user explicitly excluded Desktop/Electron execution.
+Fresh exact-candidate GHCR baseline/public/bounds/queue/cancellation/deadline/
+lifecycle/shutdown/observer/no-GPU, SDK JSON/text HTTP and resident/CUDA workloads
+passed, plus Docker Hub public/lifecycle recipes. The two 60-request series had
+no errors; source/configuration/container binding proves new rc.5 was used.
+See the [rc.5 report](<../../../verification/release-rc5.md>). Earlier
+[rc.3 evidence](<../../../verification/docker-rc3-http.md>) remains historical,
+not a substitute for the new candidate checks.
 The new published-target wiring preserves strict local-only guards and records
 actual candidate/configuration/container identities. Baseline, 51 public request
 cases, bounds/isolation, FIFO/cancel/deadlines, recovery/shutdown, SDK HTTP and

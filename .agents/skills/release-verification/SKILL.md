@@ -9,15 +9,29 @@ Read root AGENTS.md and the owning C02/R01/R02 packet under
 docs/specs/gpu-whisper-server/tasks. This skill grants no publication, promotion,
 commit, push or cluster deployment authority.
 
-The C02 build/release harness is planned and not implemented. No executable
-release-verification command is currently available. Report missing harnesses,
-candidate artifacts or checks; do not create a substitute success report.
+C02/R01 now provide real inventory and security gates. From the project root,
+with the pinned uv/Python environment and actual downloaded evidence:
 
-When C02 supplies real commands, verify the same immutable API/backend image
-manifests in GHCR and Docker Hub, image digests and source/base/toolchain identities,
-SBOM/provenance/security/license evidence, anonymous pulls, and identical chart
-archive bytes in OCI/Pages with separately recorded OCI digest. Reuse the owning
-contracts; do not invent image tags, policy thresholds or artifact names.
+```bash
+uv run --locked python tools/release/check.py --inventory "$INVENTORY" --stage candidate
+uv run --locked python tools/security/check.py --inventory "$SECURITY" --stage complete
+```
+
+These validate the supplied evidence; they do not by themselves freshly read every
+registry or run GPU acceptance. Reuse the existing release inventory, OCI and
+publisher identity helpers plus native Docker/Buildx/Helm commands for independent
+anonymous pulls. Keep client authentication state empty and task-local. Do not
+invoke a publisher CLI as a supposedly read-only verification command.
+
+Verify the same immutable API/backend image manifests in GHCR and Docker Hub,
+image digests and source/base/toolchain identities, SBOM/provenance/security/license
+evidence and identical chart archive bytes in OCI/Pages/GitHub, with the separate
+raw chart OCI manifest digest. Preserve older index entries. Reuse the owning
+contracts; do not invent tags, policy thresholds or artifact names. See the
+[actual rc.5 verification](<../../../docs/verification/release-rc5.md>) and
+[published-target harness](<../../../tests/acceptance/README.md>) for executed
+commands, identity binding and explicitly partial server-only evidence.
+Report missing artifacts/checks honestly; do not create a substitute success report.
 
 R01 publishes a GPU-unqualified pre-release. Both P07 and P08 acceptance suites
 are independently required before R02 stable release. Failed, cancelled, skipped

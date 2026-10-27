@@ -9,12 +9,17 @@ Requirements: REQ-015, REQ-026, REQ-027, REQ-028.
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Current invocation: in progress (2026-10-27). rc.4 failed its pre-publication
-native advisory source-integrity check and made no distribution writes. The user
-explicitly selected a reviewed snapshot refresh, its PR/CI and new `v0.1.0-rc.5`;
-see the [actual failure and review](<../../../verification/release-rc4-failure.md>).
-The rc.4 tag stays immutable. rc.5 must pass all fresh candidate checks and channel
-read-backs before this invocation is complete; no Desktop/P08/stable follows.
+Current invocation: **complete (2026-10-27)**. `v0.1.0-rc.5` is published and
+independently retrievable as `candidate_published_unqualified`, source
+`a98b7ccc8186ec8557d6430e005ad83ecfc2f4fa`, merged PR #13. All seven CI jobs and
+every required job in Release 40499791944/attempt1 passed. Independent anonymous
+four-image pulls, attestations/config/native identities, OCI/Pages/GitHub chart
+bytes, prior-index preservation, both renders and existing candidate/security
+gates passed. The separately selected new-candidate server HTTP/GPU stage also
+passed; see the [rc.5 report](<../../../verification/release-rc5.md>).
+The [rc.4 failure](<../../../verification/release-rc4-failure.md>) remains failed
+and immutable, not relabeled passed. No Desktop, full-P07/P08, cluster or stable
+qualification is claimed.
 
 Previous invocation complete (2026-10-26): `v0.1.0-rc.3` is published and independently
 retrievable as `candidate_published_unqualified`. Explicit source/version approval
