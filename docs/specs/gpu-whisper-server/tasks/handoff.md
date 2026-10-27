@@ -1,5 +1,17 @@
 # Current handoff
 
+## Current release recovery — reviewed snapshot, then rc.5
+
+rc.4 failed before any distribution write. Its native advisory integrity guard
+rejected a changed Debian tracker page; the reviewed byte-level difference is
+only forky package `7:9.0.2-3` → `7:9.0.2-4`, with all CVE information unchanged.
+The user explicitly authorized the narrow snapshot correction, commit/PR/CI,
+merge after successful checks and new immutable `v0.1.0-rc.5` with event-driven
+Release monitoring and final anonymous/server HTTP checks. Existing rc.4 tag and
+all earlier artifacts stay unchanged. The [failure/review report](<../../../verification/release-rc4-failure.md>)
+records actual evidence and limitations. New rc.5 publication remains incomplete;
+no Desktop, Kubernetes, stable or complete-P07 claim is authorized.
+
 ## Current server-only result — published rc.3 (2026-10-26, Europe/Moscow)
 
 The user explicitly excluded Desktop/Electron and requested direct server HTTP
