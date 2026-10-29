@@ -11,7 +11,7 @@
       "name": "ffmpeg",
       "version": "9.0.2",
       "revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
-      "rationale": "Reconciled all currently open/undetermined Debian FFmpeg entries against the pinned source and actual restricted build. Older resolved upstream entries are covered by 9.0.2; applicable MEDIUM advisories remain reported, not exempted. This is not a zero-vulnerability statement.",
+      "rationale": "Reconciled the 2026-10-29 Debian FFmpeg tracker against pinned 9.0.2 and the restricted audio build: all open entries still vulnerable or undetermined for the 9.0.2-based sid package are accounted for below. CVE-2026-96611 and CVE-2026-52297 moved to resolved and affect versions before 9.0. Applicable MEDIUM advisories remain reported, not exempted. This is not a zero-vulnerability statement.",
       "sources": [
         {
           "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/52xxx/CVE-2025-52290.json",
@@ -43,7 +43,7 @@
         },
         {
           "url": "https://security-tracker.debian.org/tracker/source-package/ffmpeg",
-          "sha256": "a128f2afae51d4972d31c47c9f303e19600536dd4e02d23e7eccff26ab81f242"
+          "sha256": "cea8314cd509e31f0da7f26d6813ba3681304d06751e2d82a952b5b91cfe0c5c"
         }
       ],
       "advisories": [

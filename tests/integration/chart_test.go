@@ -868,6 +868,9 @@ func TestChartBoundaries(t *testing.T) {
 				pod["automountServiceAccountToken"] != false {
 				t.Fatal("rollout or token boundary changed")
 			}
+			if pod["enableServiceLinks"] != false {
+				t.Fatal("implicit service environment variables can conflict with strict WHISPER configuration")
+			}
 			if pod["terminationGracePeriodSeconds"].(float64) <
 				float64(settings.Timeouts.ShutdownSeconds+settings.Timeouts.CleanupSeconds+5) {
 				t.Fatal("short termination grace")

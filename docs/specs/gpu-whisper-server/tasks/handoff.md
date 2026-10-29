@@ -1,18 +1,45 @@
 # Current handoff
 
-## Current release recovery — reviewed snapshot, then rc.5
+## Current completion — rc.5 published and selected server stage passed
 
-rc.4 failed before any distribution write. Its native advisory integrity guard
-rejected a changed Debian tracker page; the reviewed byte-level difference is
-only forky package `7:9.0.2-3` → `7:9.0.2-4`, with all CVE information unchanged.
-The user explicitly authorized the narrow snapshot correction, commit/PR/CI,
-merge after successful checks and new immutable `v0.1.0-rc.5` with event-driven
-Release monitoring and final anonymous/server HTTP checks. Existing rc.4 tag and
-all earlier artifacts stay unchanged. The [failure/review report](<../../../verification/release-rc4-failure.md>)
-records actual evidence and limitations. New rc.5 publication remains incomplete;
-no Desktop, Kubernetes, stable or complete-P07 claim is authorized.
+The approved correction merged in PR #13, source
+`a98b7ccc8186ec8557d6430e005ad83ecfc2f4fa`. All seven CI jobs and every required
+job in Release 40499791944/attempt1 passed. `v0.1.0-rc.5` is independently verified
+across all six channels and GitHub assets as `candidate_published_unqualified`.
+The new-candidate server-only HTTP/GPU stage passed on actual registry references:
+51 public cases, both 60-request series without errors, bounds/isolation,
+FIFO/cancel/deadline, eight lifecycle cases, two shutdown modes, model/GPU checks,
+SDK JSON/text HTTP, measured CUDA activity and focused Docker Hub recipes.
+See the [rc.5 report](<../../../verification/release-rc5.md>) for identities,
+actual metrics, safe receipts and the disclosed successful GHCR timeout retry.
 
-## Current server-only result — published rc.3 (2026-10-26, Europe/Moscow)
+The runtime fixes, operator monitor, published harness and reviewed security
+snapshot are already merged in PRs #10–13. The user separately authorized only
+one local R01 documentation commit on `docs/rc5-verification`, based on the exact
+released source above. Its scope is the rc.5 report, this handoff, R01/P07/checklist
+completion records and the two local skills' actual command references. No push,
+new release, new GPU workload or next packet is authorized by that selection.
+
+Documentation checkpoint (project root): retained asset `sha256sum --check`, the
+existing candidate inventory gate and complete recorded-security gate passed;
+`git diff --cached --check` and final pinned MCP checks accompany the local commit.
+These validate saved evidence, not a new registry observation or security rescan.
+Prior actual pulls/GPU results are reused only for the same unchanged rc.5 inputs.
+No product behavior changed, so no new RED/PROVE mutation or unit test is added.
+The scoped changes preserve the frozen R01 proposal, shared signatures, ownership,
+artifact identities and all incomplete GPU/stable gates; no planning change is needed.
+
+No product/harness fix, release watch or background job remains for this scope.
+All six parallel user cache/action/CHANGELOG/release-document changes are excluded
+from the commit and protected by before/after byte hashes. The next eligible work
+is the remaining server-only P07 checks under a separate invocation, not an
+automatic Desktop, cluster or stable operation.
+
+rc.4 remains frozen and failed, not overwritten; its [review evidence](<../../../verification/release-rc4-failure.md>)
+is preserved. Full P07/P08, Desktop interoperability, cluster and stable remain
+outside this completion. No next packet is started.
+
+## Previous server-only result — published rc.3 (2026-10-26, Europe/Moscow)
 
 The user explicitly excluded Desktop/Electron and requested direct server HTTP
 checks. **That selected server stage passed**, not complete P07. Do not ask again
