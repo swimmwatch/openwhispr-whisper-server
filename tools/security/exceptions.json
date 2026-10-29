@@ -81,6 +81,26 @@
   },
   {
     "scanner": "trivy",
+    "rule": "CVE-2026-118264",
+    "path": "github.com/labstack/echo/v5",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "CVE alias of GHSA-cxf3-9h37-7rr8: the affected Echo Proxy WebSocket middleware is not referenced or linked into either entrypoint. The compiled-symbol scope test checks both Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. This is exact non-applicability, not an accepted-risk waiver.",
+    "evidence": "tests/tooling/test_echo_security_scope.py",
+    "expires": "2026-10-31"
+  },
+  {
+    "scanner": "trivy",
+    "rule": "CVE-2026-118262",
+    "path": "github.com/labstack/echo/v5",
+    "disposition": "not_applicable",
+    "owner": "swimmwatch",
+    "rationale": "CVE alias of GHSA-9969-6676-49h5: the affected Echo Proxy WebSocket middleware is not referenced or linked into either entrypoint. The compiled-symbol scope test checks both Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. This is exact non-applicability, not an accepted-risk waiver.",
+    "evidence": "tests/tooling/test_echo_security_scope.py",
+    "expires": "2026-10-31"
+  },
+  {
+    "scanner": "trivy",
     "rule": "GHSA-9969-6676-49h5",
     "path": "github.com/labstack/echo/v5",
     "disposition": "not_applicable",
