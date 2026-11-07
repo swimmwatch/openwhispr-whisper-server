@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -13,6 +14,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -192,7 +195,7 @@ def record_image(
     (output / "image.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
 
 
-def chart(output: Path, helm: str | Path, source_sha: str) -> None:
+def chart(output: Path, helm: str | Path, source_sha: str, version: str | None = None) -> None:
     source(source_sha)
     output.mkdir(parents=True, exist_ok=True)
 
@@ -233,6 +236,23 @@ def chart(output: Path, helm: str | Path, source_sha: str) -> None:
             "backend": {"runtimeClassName": "nvidia"},
         },
     }
+    with tempfile.TemporaryDirectory(prefix="whisper-release-chart-") as temporary:
+        chart_source = ROOT / "charts/whisper-server"
+        if version is not None:
+            chart_source = Path(shutil.copytree(chart_source, Path(temporary) / "whisper-server"))
+            values_path = chart_source / "values.yaml"
+            values = yaml.safe_load(values_path.read_bytes())
+            for role in ("api", "backend"):
+                values["images"][role]["tag"] = version
+            values_path.write_text(yaml.safe_dump(values, sort_keys=False))
+        package: list[str | Path] = [helm, "package", chart_source, "--destination", output]
+        if version is not None:
+            package.extend(["--version", version, "--app-version", version])
+        command(package)
+    archives = list(output.glob("*.tgz"))
+    require(len(archives) == 1, "Expected one chart archive")
+    extract(archives[0], output / "extracted")
+
     for name, values in variants.items():
         values_path = output / "values" / (name + ".json")
         values_path.parent.mkdir(exist_ok=True)
@@ -247,7 +267,7 @@ def chart(output: Path, helm: str | Path, source_sha: str) -> None:
                     helm,
                     "template",
                     "whisper",
-                    "charts/whisper-server",
+                    archives[0],
                     "--namespace",
                     "whisper-test",
                     "--kube-version",
@@ -257,12 +277,6 @@ def chart(output: Path, helm: str | Path, source_sha: str) -> None:
                 ],
                 stdout=stream,
             )
-
-    command([helm, "package", "charts/whisper-server", "--destination", output])
-
-    archives = list(output.glob("*.tgz"))
-    require(len(archives) == 1, "Expected one chart archive")
-    extract(archives[0], output / "extracted")
 
     result = {
         "source_sha": source_sha,
@@ -362,6 +376,7 @@ def main() -> int:
     c.add_argument("--output", type=Path, required=True)
     c.add_argument("--helm", required=True)
     c.add_argument("--source-sha", required=True)
+    c.add_argument("--version")
 
     g = sub.add_parser("jobs")
     g.add_argument("--needs", required=True)
@@ -387,7 +402,7 @@ def main() -> int:
         elif args.action == "record-image":
             record_image(args.output.resolve(), args.source_sha, args.cold, args.expected_digest)
         elif args.action == "chart":
-            chart(args.output.resolve(), args.helm, args.source_sha)
+            chart(args.output.resolve(), args.helm, args.source_sha, args.version)
         elif args.action == "jobs":
             required_jobs(json.loads(args.needs), set(args.required))
         else:

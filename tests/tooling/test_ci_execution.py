@@ -133,24 +133,6 @@ class SecurityExecutionTests(unittest.TestCase):
 
         self.assertNotIn(marker, str(caught.exception))
 
-    def test_inline_suppressions_require_the_exact_ledger(self) -> None:
-        from tools.security.run import inline_policy
-
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / "internal").mkdir()
-            (root / "internal/example.go").write_text("package fixture\n// #nosec G304\n")
-
-            with self.assertRaises(ValueError):
-                inline_policy(root, [])
-
-            item = {"scanner": "gosec", "rule": "G304", "path": "internal/example.go"}
-            inline_policy(root, [item])
-            (root / "internal/example.go").write_text("package fixture\n// #nosec\n")
-
-            with self.assertRaises(ValueError):
-                inline_policy(root, [item])
-
     def test_helm_installer_accepts_actual_manifest_layout(self) -> None:
         import io
         import tarfile

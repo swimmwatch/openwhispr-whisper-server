@@ -60,7 +60,7 @@ func TestPrivateRoutes(t *testing.T) {
 		}
 		data, _ := io.ReadAll(r.Body)
 		_ = r.Body.Close()
-		if r.StatusCode != 404 || !strings.Contains(string(data), "route_not_found") {
+		if r.StatusCode != http.StatusNotFound || !strings.Contains(string(data), "route_not_found") {
 			t.Fatalf("private route escaped allowlist: %s %d %s", path, r.StatusCode, data)
 		}
 	}
@@ -77,7 +77,7 @@ func TestPrivateRoutes(t *testing.T) {
 	if err := json.NewDecoder(r.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
-	if r.StatusCode != 200 || result.Text != "fixture transcript" || r.Header.Get("X-Request-ID") != "test-request-01" {
+	if r.StatusCode != http.StatusOK || result.Text != "fixture transcript" || r.Header.Get("X-Request-ID") != "test-request-01" {
 		t.Fatalf("private inference: %d %+v", r.StatusCode, result)
 	}
 	if len(starts(t, root)) != 1 || strings.Contains(log.text(), "PRIVATE") {
@@ -105,7 +105,7 @@ func TestGenerationMismatch(t *testing.T) {
 		}
 		body, _ := io.ReadAll(response.Body)
 		_ = response.Body.Close()
-		if response.StatusCode < 400 || strings.Contains(string(body), "PRIVATE") {
+		if response.StatusCode < http.StatusBadRequest || strings.Contains(string(body), "PRIVATE") {
 			t.Fatalf("invalid compatibility accepted/leaked: %s %d", header, response.StatusCode)
 		}
 	}
@@ -117,7 +117,7 @@ func TestGenerationMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = response.Body.Close()
-	if response.StatusCode < 400 {
+	if response.StatusCode < http.StatusBadRequest {
 		t.Fatal("duplicate compatibility header accepted")
 	}
 
@@ -185,7 +185,7 @@ func TestPrivateBodyValidation(t *testing.T) {
 
 			data, _ := io.ReadAll(response.Body)
 			_ = response.Body.Close()
-			if response.StatusCode < 400 || strings.Contains(string(data), "PRIVATE") {
+			if response.StatusCode < http.StatusBadRequest || strings.Contains(string(data), "PRIVATE") {
 				t.Fatalf("invalid private body accepted/leaked: %d %s", response.StatusCode, data)
 			}
 		})
@@ -230,7 +230,7 @@ func TestHealthDuringInference(t *testing.T) {
 		CUDA   bool   `json:"cuda_ready"`
 	}
 	_ = json.NewDecoder(response.Body).Decode(&health)
-	if response.StatusCode != 200 || health.Status != "busy" || !health.CUDA || time.Since(started) > 200*time.Millisecond {
+	if response.StatusCode != http.StatusOK || health.Status != "busy" || !health.CUDA || time.Since(started) > 200*time.Millisecond {
 		t.Fatalf("health blocked or lied: %d %+v", response.StatusCode, health)
 	}
 
@@ -264,7 +264,7 @@ func TestPrivateRemainingDeadline(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = response.Body.Close()
-		if response.StatusCode < 400 {
+		if response.StatusCode < http.StatusBadRequest {
 			t.Fatalf("invalid residual deadline accepted: %s", value)
 		}
 	}

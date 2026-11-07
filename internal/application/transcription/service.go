@@ -61,6 +61,7 @@ type Service struct {
 	unsafeGeneration                             string
 	terminal                                     error
 	wake                                         chan struct{}
+	healthCalls                                  chan struct{}
 	workerDone, observerDone, done, shutdownDone chan struct{}
 	staging                                      context.Context
 	stopStaging                                  context.CancelFunc
@@ -99,6 +100,7 @@ func NewService(opts Options, normalizer Normalizer, backend InferenceBackend, l
 		logger:     logger,
 
 		wake:         make(chan struct{}, 1),
+		healthCalls:  make(chan struct{}, 1),
 		workerDone:   make(chan struct{}),
 		observerDone: make(chan struct{}),
 		done:         make(chan struct{}),
@@ -348,6 +350,18 @@ func (s *Service) execute(t *ticket) (result Result, err error) {
 		if recoveryErr := s.recoverBackend(t); recoveryErr != nil {
 			s.fail(recoveryErr)
 			err = errors.Join(semantic(err), recoveryErr)
+		}
+	}
+
+	if err == nil {
+		// Infer has returned and its cleanup watcher is stopped: confirm fresh
+		// dependency state before retiring the owner of a cached Busy snapshot.
+		// A health-only failure affects readiness, not the completed inference.
+		_, _ = s.readHealth(t.ctx)
+		if t.ctx.Err() != nil {
+			// No native work remains to recover, but the end-to-end request budget
+			// still applies while waiting for the final dependency observation.
+			err = s.cancelled(t)
 		}
 	}
 

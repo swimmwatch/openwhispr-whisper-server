@@ -3,13 +3,22 @@
 Outcome: complete CI and a controlled multi-channel release pipeline with discriminating failure gates.
 Requirements: REQ-015, REQ-019, REQ-023, REQ-026, REQ-027, REQ-028.
 
+## Current workflow follow-up
+
+The user subsequently selected tag-driven release builds instead of publishing
+main-CI artifacts. The current workflow runs CI only for PRs, builds cold RC
+images at release time, and promotes accepted RC images unchanged for stable.
+See [release operations](../../../releases.md#tag-driven-release-workflow) and
+the current handoff. The frozen C02 proposal and past qualification below are
+historical; they do not assert remote qualification of this local refactor.
+
 ## Inputs and execution boundary
 
 - source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
 - specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
 - review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
 
-Status: local checks pass, incomplete pending actual remote qualification (2026-10-24). All 100 tooling tests pass without skips, including actual scanners/publishers, selected-image promotion and runner-loss alias recovery. All 22 security targets have zero blockers and no coverage gaps; three applicable native MEDIUM findings remain reported. Current image/Compose/Helm race checks pass (372.625s). Current exports are cached dirty-checkout evidence; trusted remote CI/current committed cold-build qualification remains required. The frozen technical proposal is unchanged. Older checkpoints below are historical; see the current local checkpoint at the end.
+Status: complete (2026-10-25, Europe/Moscow). Trusted main CI run 40138859398 passed all seven required jobs on committed source `76279e618a2692551bbdad48d2dd77461ad4b530`, including both cold builds, runtime/license/Compose checks and the complete 22-target Security Check. The test-only cold-base timeout correction is merged in PR #7. Publication and hardware acceptance remain separate. The frozen technical proposal is unchanged. Older checkpoints below are historical; the final trusted qualification is recorded at the end.
 
 All commands below run from the project root and use rtk. Named scripts/tests are **to create**, unless explicitly identified as existing. Write/run the discriminating check before the change; record relevant RED, correct implementation to GREEN, and PROVE newly written absence/wiring assertions with one reversible mutation when RED did not exercise them. A missing file/tool alone is not semantic RED. Restore all probes/mutations before final checks.
 
@@ -325,3 +334,37 @@ Private evidence is `.local/workflow-optimization/`.
 Current remote CI/clean cold-build qualification remains required. Next
 owner/action is unchanged: the C02 implementation agent runs it after separate
 commit/push authorization. The frozen technical proposal is unchanged.
+
+## Trusted main qualification — 2026-10-25
+
+[CI run 40138859398](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40138859398) passed all seven required jobs on committed
+source `76279e618a2692551bbdad48d2dd77461ad4b530`. Both Linux amd64 images were built
+without GPU injection, with fresh isolated builders, `--no-cache` and no imported
+PR layer caches. Export checks retained and verified SBOM/provenance attestations.
+
+Runtime, component, license and Compose checks passed in 204.491s. All ten
+resource-budget cases passed; the first cold backend CPU probe took 66.12s.
+The former 60s deadline had failed twice in main run 40124786409. PR #7 increased
+only this bounded probe budget to 180s; CPU, affinity, memory and override
+assertions remain unchanged. The source job also passed production Go race
+checks; packaging artifact checks ran without race instrumentation.
+
+Security Check passed all 22 required targets against these same image indexes,
+chart archive and source revision. Main protection requires this aggregate check
+with strict up-to-date checks; unrelated protection settings were preserved.
+
+| Artifact | Qualified identity |
+| --- | --- |
+| API OCI index | `sha256:40b6ce3d7e9b2d4cb97608798358f0373c52cd807f6ad443c676a447f4b34f75` |
+| Backend OCI index | `sha256:5dd326f3e5ff3abcd1cd20a96eb4a9aee5a8a7c19b2d89ebc8b1b174e0d132bc` |
+| Chart archive SHA256 | `42b8f493ec7d707f6551cd5752b4792e431919b7be304bf719e8f7227d47ce57` |
+
+The inventory field `image_manifest_digests` binds the OCI index identities above,
+including their executable manifests and attestations.
+The exported Linux amd64 manifests and attestation identities were also checked.
+Private evidence is under `.local/c02/ci-followup/main-76279e6/`; the GitHub run
+contains the corresponding public job results and artifacts. Local cached/dirty
+exports in earlier checkpoints remain historical and are not the selected
+qualification evidence. Release publication and GPU/cluster acceptance remain
+outside this packet. Final pinned specification check passed and the exact C02 agreement remained
+ready after these bookkeeping changes; the frozen technical proposal is unchanged.

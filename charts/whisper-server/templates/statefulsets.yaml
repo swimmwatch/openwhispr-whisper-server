@@ -30,6 +30,8 @@ spec:
         checksum/config: {{ include "whisper-server.config" $root | sha256sum | quote }}
     spec:
       automountServiceAccountToken: false
+      # Discover paired Services through DNS, not injected WHISPER_* environment keys.
+      enableServiceLinks: false
       terminationGracePeriodSeconds: {{ default (add $c.timeouts.shutdownSeconds $c.timeouts.cleanupSeconds 5) $root.Values.terminationGracePeriodSeconds }}
       securityContext:
         runAsUser: 10001

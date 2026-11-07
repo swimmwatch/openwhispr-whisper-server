@@ -44,10 +44,11 @@ From the repository root, install the exact interpreter selected by
 ```sh
 uv python install
 uv sync --locked
-uv run --locked ruff format --check tools tests/tooling
-uv run --locked ruff check tools tests/tooling
+uv run --locked ruff format --check tools tests/tooling tests/acceptance
+uv run --locked ruff check tools tests/tooling tests/acceptance
 uv run --locked mypy
 uv run --locked python -m unittest discover -s tests/tooling -v
+uv run --locked python -m unittest discover -s tests/acceptance -p 'test_*.py' -v
 ```
 
 Ruff owns formatting, imports, syntax, modernization and selected bug/simplification
@@ -55,7 +56,7 @@ checks; mypy checks production annotations and test bodies. Configuration lives
 in [pyproject.toml](pyproject.toml). See the official
 [Ruff configuration](https://docs.astral.sh/ruff/configuration/) and
 [mypy configuration](https://mypy.readthedocs.io/en/stable/config_file.html).
-Run `uv run --locked ruff format tools tests/tooling` to apply formatting locally.
+Run `uv run --locked ruff format tools tests/tooling tests/acceptance` to apply formatting locally.
 The non-packaged uv project declares runtime tooling dependencies and a default
 `dev` dependency group in `pyproject.toml`; [uv.lock](uv.lock) is the only dependency
 lock. `uv sync --locked` installs both groups into `.venv/` and fails on a stale

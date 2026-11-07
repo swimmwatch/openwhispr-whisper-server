@@ -10,6 +10,7 @@ manifests rather than action inputs.
 | `ci-config` | Export tool pins and shared CI settings; invoke runner parallelism | Checkout with project manifests |
 | `runner-parallelism` | Derive Go, installer and image-build worker budgets from `nproc` | Linux runner; no inputs |
 | `setup-python` | Install pinned uv/Python and sync locked dependencies | After `ci-config`; `cache` and `dev-dependencies` are `true` or `false` strings |
+| `build-image` | Build and verify one OCI export with native Docker Actions and preserved SBOM/provenance | After `ci-config` and Python setup; `role`, `source-sha`, optional `version`, `cold` |
 | `cache-tools` | Restore/save checksum-verified downloads by runner, job and manifest identity | After `ci-config`; no inputs |
 | `cache-trivy-db` | Restore/save only the daily vulnerability database | After `ci-config`; no inputs |
 | `setup-trivy` | Install the pinned native scanner and immediately verify its executable hash | After Python setup; required `destination`, `cache` is a `true` or `false` string |

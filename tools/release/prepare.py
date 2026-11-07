@@ -14,7 +14,6 @@ import yaml
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.contract_yaml import load_yaml
 from tools.release.artifacts import ROOT, inspect_layout, runtime_identity, verify_chart
 from tools.release.check import require
 from tools.release.storage import link_or_copy
@@ -75,8 +74,8 @@ def rendered(
 
 def equivalent(candidate: Path, stable: Path, helm: str | Path, images: dict[str, str]) -> None:
     old, new = verify_chart(candidate), verify_chart(stable)
-    old_metadata = load_yaml((candidate / "extracted/whisper-server/Chart.yaml").read_text())
-    new_metadata = load_yaml((stable / "extracted/whisper-server/Chart.yaml").read_text())
+    old_metadata = yaml.safe_load((candidate / "extracted/whisper-server/Chart.yaml").read_text())
+    new_metadata = yaml.safe_load((stable / "extracted/whisper-server/Chart.yaml").read_text())
     for metadata in (old_metadata, new_metadata):
         metadata.pop("version", None)
         metadata.pop("appVersion", None)
@@ -110,7 +109,7 @@ def select(
     )
 
     chart = verify_chart(current / "chart")
-    metadata = load_yaml((current / "chart/extracted/whisper-server/Chart.yaml").read_text())
+    metadata = yaml.safe_load((current / "chart/extracted/whisper-server/Chart.yaml").read_text())
     require(
         chart["source_sha"] == data["release_source_sha"]
         and chart["chart_archive_sha256"] == data["chart_archive_sha256"]

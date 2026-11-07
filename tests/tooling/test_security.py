@@ -17,6 +17,22 @@ DIGEST = "sha256:" + "2" * 64
 
 
 class ScannerReportTests(unittest.TestCase):
+    def test_published_echo_advisory_cve_aliases_preserve_exact_scope(self) -> None:
+        exceptions = json.loads(Path("tools/security/exceptions.json").read_text())
+        findings = [
+            {"VulnerabilityID": rule, "PkgName": package, "Severity": "HIGH"}
+            for rule, package in (
+                ("CVE-2026-118264", "github.com/labstack/echo/v5"),
+                ("CVE-2026-118262", "github.com/labstack/echo/v5"),
+                ("CVE-2026-118264", "github.com/labstack/echo/v4"),
+                ("CVE-2026-999999", "github.com/labstack/echo/v5"),
+            )
+        ]
+        raw = {"SchemaVersion": 2, "Results": [{"Vulnerabilities": findings}]}
+        result = check.evaluate("trivy-vuln", raw, 0, exceptions, NOW)
+        self.assertEqual(result["blocking_count"], 2)
+        self.assertEqual(result["exception_count"], 2)
+
     def test_trivy_exception_matches_only_one_advisory_and_module(self) -> None:
         exception = {
             "scanner": "trivy",

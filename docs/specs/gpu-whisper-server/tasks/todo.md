@@ -1,6 +1,58 @@
 # Resident V1 completion checklist
 
-Status: I01, I02, I03, C01, F01 and P01–P06 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Actual cluster/GPU/CNI acceptance, full hosted CI/security qualification, publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
+Status: I01, I02, I03, C01, F01, P01–P06 and C02 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Hosted CI/security qualification and R01 pre-release publication are complete. Cluster/GPU/CNI acceptance, stable publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
+
+## Current R01 completion — 2026-10-27
+
+[v0.1.0-rc.5](https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.5)
+is published from merged PR #13/source `a98b7ccc8186ec8557d6430e005ad83ecfc2f4fa`.
+CI 40491959663 and Release 40499791944 passed all required jobs. Independent fresh
+anonymous image/chart/GitHub asset read-backs, attestations, exact identities,
+prior-index preservation, both registry renders and candidate/security gates passed.
+The separately selected server-only HTTP/GPU stage on actual new rc.5 images also
+passed; see the [complete report](<../../../verification/release-rc5.md>).
+State remains `candidate_published_unqualified`; full P07/P08/P09/R02 stay unchecked.
+rc.4 remains failed/frozen, not relabeled passed. No Desktop, cluster or stable run.
+
+## Previous R01 completion — 2026-10-26
+
+[v0.1.0-rc.3](https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.3)
+is `candidate_published_unqualified` from merged PR #10, source
+`a47647049ad69ae154e327d8d2536d650eaa4dee`.
+[CI 40333890561](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40333890561)
+and [release 40347039761](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40347039761)
+passed their required checks. Independent anonymous four-image pulls, both chart
+channels, GitHub assets, attestations, retained rc.2 index/archive, both registry
+renders and candidate/security gates passed. Final MCP specification/agreement
+checks passed. See the [rc.3 report](<../../../verification/release-rc3.md>).
+Only R01 publication is complete; P07/P08 GPU qualification, P09 and R02 remain
+unchecked. Existing published tags/bytes were preserved; no stable or cluster action.
+
+## Previous hosted qualification — 2026-10-25
+
+C02 is complete. [Trusted main CI 40138859398](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40138859398) passed all seven required
+jobs on source `76279e618a2692551bbdad48d2dd77461ad4b530`, including both cold image builds,
+runtime/license/Compose checks and all 22 security targets. The earlier probe
+timeout is fixed and validated in main. The historical checkpoints below are
+superseded by this result. R01 subsequently published the GPU-unqualified rc.2
+candidate; no GPU/cluster acceptance or stable release has been performed.
+
+## R01 completion — 2026-10-25
+
+[PR #9](https://github.com/swimmwatch/openwhispr-whisper-server/pull/9) merged only
+after all seven jobs in [CI 40207794716](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40207794716)
+passed. [Release 40212576458](https://github.com/swimmwatch/openwhispr-whisper-server/actions/runs/40212576458)
+then passed cold builds, runtime/license/Compose checks, fresh complete security
+qualification and all publication/read-back jobs for
+[v0.1.0-rc.2](https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.2).
+Independent anonymous pulls checked both exact images in GHCR/Docker Hub,
+SBOM/provenance, identical OCI/Pages/GitHub chart bytes, both chart image-registry
+overrides and GitHub pre-release/not-latest metadata. Final inventory gate:
+`candidate_published_unqualified`; pinned specification passed and R01 agreement
+remained ready. The rc.1 tag is unchanged. See [handoff](handoff.md) for identities.
+Only R01 is newly checked; subsequent packets are not started.
+
+## Historical checkpoints
 
 P06's [review corrections](06_helm_chart.md#review-corrections--2026-10-23)
 also passed both new regressions, isolated PROVE checks, all eight chart tests,
@@ -37,6 +89,8 @@ readiness is separate from acceptance. P05 CPU-quota correction is complete. A s
 invoked C02 resume needs fresh preflight and its remaining required checks.
 R01 is not yet eligible.
 
+## Delivery checklist
+
 - [x] [I01 — local project initialization](init_01_local_project.md)
 - [x] [I02 — public GitHub and open-source foundation](init_02_github_open_source.md)
 - [x] [I03 — Codex project tooling](init_03_agent_tooling.md)
@@ -48,8 +102,8 @@ R01 is not yet eligible.
 - [x] [P04 — queue, health and lifecycle](04_queue_health_lifecycle.md)
 - [x] [P05 — images and standalone composition](05_images_standalone.md)
 - [x] [P06 — Helm chart](06_helm_chart.md)
-- [ ] [C02 — complete build and release pipeline](ci_02_build_release_pipeline.md)
-- [ ] [R01 — pre-release publication and anonymous pull-back](release_01_prerelease.md)
+- [x] [C02 — complete build and release pipeline](ci_02_build_release_pipeline.md)
+- [x] [R01 — pre-release publication and anonymous pull-back](release_01_prerelease.md)
 - [ ] [P07 — Docker / RTX 5070 Ti Laptop acceptance](07_docker_gpu_acceptance.md)
 - [ ] [P08 — Home Lab / RTX 2060 acceptance](08_homelab_gpu_acceptance.md)
 - [ ] [P09 — final README and durable documentation](09_documentation.md)

@@ -115,7 +115,7 @@ func TestAPISIGTERM(t *testing.T) {
 		response, err := client.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/health/ready")
 		if err == nil {
 			_ = response.Body.Close()
-			if response.StatusCode == 200 {
+			if response.StatusCode == http.StatusOK {
 				ready = true
 				break
 			}

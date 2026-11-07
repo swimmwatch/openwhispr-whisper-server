@@ -142,10 +142,6 @@ class BuildCacheTests(unittest.TestCase):
             build,
         )
         self.assertNotIn("--no-cache", build)
-        self.assertEqual(
-            (self.root / "output/buildkitd.toml").read_text(),
-            "[worker.oci]\n  max-parallelism = 3\n",
-        )
         self.assertEqual(self.calls[-1][:2], ["buildx", "rm"])
 
     def test_cold_build_remains_uncached(self) -> None:

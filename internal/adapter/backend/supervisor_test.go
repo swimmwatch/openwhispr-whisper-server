@@ -58,14 +58,14 @@ func TestNativeChild(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := os.Stat(filepath.Join(root, "bad-health")); err == nil {
-			w.WriteHeader(503)
+			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 	mux.HandleFunc("/inference", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			w.WriteHeader(400)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
@@ -92,7 +92,13 @@ func TestNativeChild(t *testing.T) {
 		_, _ = io.WriteString(w, `{"text":"fixture transcript"}`)
 	})
 
-	if err := http.ListenAndServe("127.0.0.1:"+port, mux); err != nil {
+	var serveErr error
+	if string(mode) == "reuse-port" {
+		serveErr = serveReusePortNative("127.0.0.1:"+port, mux)
+	} else {
+		serveErr = http.ListenAndServe("127.0.0.1:"+port, mux)
+	}
+	if serveErr != nil {
 		os.Exit(8)
 	}
 	os.Exit(0)

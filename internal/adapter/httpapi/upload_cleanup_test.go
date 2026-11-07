@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func TestPrivacyCleanup(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			e.ServeHTTP(w, r)
-			if w.Code < 400 || strings.Contains(w.Body.String()+logs.String(), "PRIVATE") {
+			if w.Code < http.StatusBadRequest || strings.Contains(w.Body.String()+logs.String(), "PRIVATE") {
 				t.Fatalf("failure exposed content or fabricated success: %d %s", w.Code, w.Body.String())
 			}
 
@@ -99,7 +100,8 @@ func TestPublicStalledUpload(t *testing.T) {
 	if timeout, ok := readErr.(net.Error); ok && timeout.Timeout() {
 		t.Fatal("upload timeout left a live stalled connection")
 	}
-	if bytes.Contains(data, []byte("200 OK")) || s.calls.Load() != 0 {
+	successStatus := fmt.Sprintf("%d %s", http.StatusOK, http.StatusText(http.StatusOK))
+	if bytes.Contains(data, []byte(successStatus)) || s.calls.Load() != 0 {
 		t.Fatal("stalled upload fabricated success or reached admission")
 	}
 

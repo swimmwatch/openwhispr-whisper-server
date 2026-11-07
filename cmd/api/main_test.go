@@ -71,7 +71,7 @@ func TestAPIAssembly(t *testing.T) {
 		}
 		if err := r.ParseMultipartForm(64 << 10); err != nil {
 			t.Error(err)
-			w.WriteHeader(400)
+			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
@@ -80,7 +80,7 @@ func TestAPIAssembly(t *testing.T) {
 		file, _, err := r.FormFile("file")
 		if err != nil {
 			t.Error(err)
-			w.WriteHeader(400)
+			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
@@ -176,7 +176,7 @@ func TestAPIAssembly(t *testing.T) {
 		response, err := client.Get(base + "/health/ready")
 		if err == nil {
 			_ = response.Body.Close()
-			if response.StatusCode == 200 {
+			if response.StatusCode == http.StatusOK {
 				ready = true
 				break
 			}
@@ -261,7 +261,7 @@ func TestAPIAssembly(t *testing.T) {
 		}
 
 		_ = response.Body.Close()
-		if response.StatusCode != 200 || response.Header.Get("X-Request-ID") == "" {
+		if response.StatusCode != http.StatusOK || response.Header.Get("X-Request-ID") == "" {
 			t.Fatal("active health/ID contract failed")
 		}
 	}
@@ -272,7 +272,7 @@ func TestAPIAssembly(t *testing.T) {
 	}
 
 	_ = denied.Body.Close()
-	if denied.StatusCode != 429 || denied.Header.Get("Retry-After") == "" || inference.Load() != 1 {
+	if denied.StatusCode != http.StatusTooManyRequests || denied.Header.Get("Retry-After") == "" || inference.Load() != 1 {
 		t.Fatal("assembled rate limiter did not reject before body validation/inference")
 	}
 	cancel()
@@ -286,7 +286,7 @@ func TestAPIAssembly(t *testing.T) {
 	data, err := io.ReadAll(response.Body)
 	_ = response.Body.Close()
 	if err != nil ||
-		response.StatusCode != 200 ||
+		response.StatusCode != http.StatusOK ||
 		response.Header.Get("X-Request-ID") != "command-request-1" ||
 		string(bytes.TrimSpace(data)) != `{"text":"PRIVATE transcript"}` {
 		t.Fatalf("public result/wiring mismatch: status=%d error=%v", response.StatusCode, err)

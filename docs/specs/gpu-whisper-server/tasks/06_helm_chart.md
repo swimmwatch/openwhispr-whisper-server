@@ -15,6 +15,13 @@ Prerequisites: P05 checks pass. Read core/contracts.yaml deployment/configuratio
 
 ## Scope and architecture
 
+Maintenance update (2026-10-25): the custom Python Kubernetes-schema walker,
+recursive YAML scalar assertions and schema downloads were retired at the user's
+request. Native Helm linting and behavior tests remain. Schema-validation results
+and commands recorded in the completion history below are historical evidence,
+not current prerequisites. Use [release automation](../../../releases.md) for the
+current tooling commands.
+
 Allowed: charts/whisper-server/**, chart validation fixtures/checks in tests/integration/**, narrow canonical config serializers only when shared parity requires them. No cluster/GPU/CNI/ingress provisioning, deployment, publishing, autoscaling or global state.
 
 Use two StatefulSets with matching replicas/ordinals and dedicated per-ordinal backend Services. API-n derives only backend-n from its own Pod name; selectors use statefulset.kubernetes.io/pod-name (avoid reliance on newer pod-index labels). Public Service balances APIs only. Native HTTP is loopback inside backend. Create per-pair NetworkPolicy allowing only API-n to backend-n's supervisor; default boundary excludes direct native/load access, non-paired Pods and other namespaces. Document CNI as required; rendered YAML does not prove enforcement.
@@ -176,8 +183,8 @@ rtk proxy .local/p06/bin/helm3 lint charts/whisper-server --strict
 rtk proxy .local/p06/bin/helm4 lint charts/whisper-server --strict
 ```
 
-The harness defaults to `.local/p06/bin/helm3`, `.local/p06/bin/helm4` and
-`.local/p06/schemas`; `P06_HELM3`, `P06_HELM4`, `P06_SCHEMA_DIR` and `PYTHON`
+The harness defaults to `.local/p06/bin/helm3` and `.local/p06/bin/helm4`;
+`P06_HELM3`, `P06_HELM4` and `PYTHON`
 can select equivalent pinned inputs. Obtain the declared public files from
 `chart-inputs.json` and verify their recorded identities before execution.
 Ordinary Go tests skip opt-in chart execution. P05 image execution was not

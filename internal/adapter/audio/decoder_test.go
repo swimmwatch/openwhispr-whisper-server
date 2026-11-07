@@ -191,7 +191,7 @@ func TestDecoderSourceConfinement(t *testing.T) {
 	var accesses atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accesses.Add(1)
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 

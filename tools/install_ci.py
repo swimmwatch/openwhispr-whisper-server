@@ -146,16 +146,6 @@ def install_tool(
             if item["kind"] == "helm" and item["version"].startswith(name[-1] + ".")
         )
         install(name, metadata, destination, cache, archive_name="helm")
-    elif name == "kubernetes-schemas":
-        inputs = json.loads((ROOT / "tests/integration/testdata/chart-inputs.json").read_bytes())
-        schemas = destination / "schemas"
-        schemas.mkdir(exist_ok=True)
-
-        for metadata in inputs:
-            if metadata["kind"] == "kubernetes":
-                (schemas / (metadata["version"] + ".json")).write_bytes(
-                    download_input(metadata, cache)
-                )
     else:
         metadata = (
             versions["ci"][name] if name in ("actionlint", "buildx") else versions["scanners"][name]

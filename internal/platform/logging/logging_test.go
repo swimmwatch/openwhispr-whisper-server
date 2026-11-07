@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestStructuredLoggingPrivacyAtEverySeverity(t *testing.T) {
 				Name:      RequestCompleted,
 				Method:    "PRIVATE",
 				Route:     "/PRIVATE?q=PRIVATE",
-				Status:    500,
+				Status:    http.StatusInternalServerError,
 				ErrorCode: "PRIVATE",
 			})
 			if strings.Contains(out.String(), "PRIVATE") {
@@ -34,7 +35,7 @@ func TestStructuredLoggingPrivacyAtEverySeverity(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &entry); err != nil {
 				t.Fatal(err)
 			}
-			if entry["request_id"] != "safe-id" || entry["status"] != float64(500) || entry["component"] != "api" {
+			if entry["request_id"] != "safe-id" || entry["status"] != float64(http.StatusInternalServerError) || entry["component"] != "api" {
 				t.Fatalf("invalid event: %v", entry)
 			}
 			if RequestID(WithRequestID(ctx, "PRIVATE\n")) != "" {

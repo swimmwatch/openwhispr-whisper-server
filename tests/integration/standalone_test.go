@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -129,7 +130,7 @@ func TestStandalonePrivateNetwork(t *testing.T) {
 				probe := docker(
 					t, "exec", backendID, "/bin/sh", "-c",
 					fmt.Sprintf("curl -s --max-time 1 -o /dev/null -w '%%{http_code}' http://127.0.0.1:%d/health || true", ports.backend))
-				if string(probe) == "503" {
+				if string(probe) == strconv.Itoa(http.StatusServiceUnavailable) {
 					break
 				}
 				if time.Now().After(deadline) {
@@ -141,7 +142,7 @@ func TestStandalonePrivateNetwork(t *testing.T) {
 			response := docker(
 				t, "exec", apiID, "curl", "-s", "--max-time", "2", "-o", "/dev/null",
 				"-w", "%{http_code}", fmt.Sprintf("http://backend:%d/health", ports.backend))
-			if string(response) != "503" {
+			if string(response) != strconv.Itoa(http.StatusServiceUnavailable) {
 				t.Fatal("API cannot reach paired private backend")
 			}
 
@@ -260,7 +261,7 @@ func TestStandaloneWiring(t *testing.T) {
 					probe := docker(
 						t, "exec", container, "/bin/sh", "-c",
 						"curl -s --max-time 1 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/health/live || true")
-					if string(probe) == "200" {
+					if string(probe) == strconv.Itoa(http.StatusOK) {
 						break
 					}
 					if time.Now().After(deadline) {
@@ -272,7 +273,7 @@ func TestStandaloneWiring(t *testing.T) {
 				code := docker(
 					t, "exec", container, "curl", "-s", "--max-time", "2", "-o", "/dev/null",
 					"-w", "%{http_code}", "http://127.0.0.1:8080/health/ready")
-				if string(code) != "503" {
+				if string(code) != strconv.Itoa(http.StatusServiceUnavailable) {
 					t.Fatal("unavailable backend produced false readiness")
 				}
 				docker(

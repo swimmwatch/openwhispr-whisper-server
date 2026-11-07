@@ -149,15 +149,15 @@ func TestPortFailureConversion(t *testing.T) {
 		status           int
 		kind             domain.FailureKind
 	}{
-		{"not-ready", "not_ready", "", 503, domain.NotReady},
-		{"gpu", "gpu_unavailable", "", 503, domain.GPUUnavailable},
-		{"timeout", "operation_timeout", "", 408, domain.DeadlineExceeded},
-		{"internal", "internal_error", "", 500, domain.Internal},
-		{"malformed", "", "PRIVATE malformed native reply", 200, domain.BackendUnavailable},
-		{"missing-text", "", "{}", 200, domain.BackendUnavailable},
-		{"truncated", "", "{\"text\":", 200, domain.BackendUnavailable},
-		{"extra-result", "", "{\"text\":\"x\",\"PRIVATE\":true}", 200, domain.BackendUnavailable},
-		{"unknown", "PRIVATE", "", 503, domain.BackendUnavailable},
+		{"not-ready", "not_ready", "", http.StatusServiceUnavailable, domain.NotReady},
+		{"gpu", "gpu_unavailable", "", http.StatusServiceUnavailable, domain.GPUUnavailable},
+		{"timeout", "operation_timeout", "", http.StatusRequestTimeout, domain.DeadlineExceeded},
+		{"internal", "internal_error", "", http.StatusInternalServerError, domain.Internal},
+		{"malformed", "", "PRIVATE malformed native reply", http.StatusOK, domain.BackendUnavailable},
+		{"missing-text", "", "{}", http.StatusOK, domain.BackendUnavailable},
+		{"truncated", "", "{\"text\":", http.StatusOK, domain.BackendUnavailable},
+		{"extra-result", "", "{\"text\":\"x\",\"PRIVATE\":true}", http.StatusOK, domain.BackendUnavailable},
+		{"unknown", "PRIVATE", "", http.StatusServiceUnavailable, domain.BackendUnavailable},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var calls atomic.Int32
@@ -220,7 +220,7 @@ func TestUpstreamHealthAndBounds(t *testing.T) {
 				case "deadline":
 					<-r.Context().Done()
 				case "redirect":
-					http.Redirect(w, r, "/inference", 307)
+					http.Redirect(w, r, "/inference", http.StatusTemporaryRedirect)
 				}
 			}))
 			defer server.Close()
