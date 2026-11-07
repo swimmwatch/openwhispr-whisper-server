@@ -360,13 +360,23 @@ func TestClientCaseCommandStopsChildren(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("client process group did not stop")
 	}
-	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
-	if err != nil && !clientCaseProcessGone(err) {
-		var errno syscall.Errno
-		_ = errors.As(err, &errno)
-		t.Fatalf("cannot establish whether owned client descendant stopped: errno=%d", errno)
-	}
-	if err == nil && !strings.Contains(string(data), ") Z ") {
-		t.Fatal("client descendant survived cancellation")
+	// Wait reaps the shell, not its child. Group SIGKILL delivery does not
+	// synchronously establish the descendant's exit, so observe it boundedly.
+	retired := time.After(time.Second)
+	for {
+		data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+		if clientCaseProcessGone(err) || err == nil && strings.Contains(string(data), ") Z ") {
+			break
+		}
+		if err != nil {
+			var errno syscall.Errno
+			_ = errors.As(err, &errno)
+			t.Fatalf("cannot establish whether owned client descendant stopped: errno=%d", errno)
+		}
+		select {
+		case <-retired:
+			t.Fatal("client descendant survived cancellation")
+		case <-time.After(5 * time.Millisecond):
+		}
 	}
 }
