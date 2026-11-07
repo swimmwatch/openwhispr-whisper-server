@@ -75,9 +75,9 @@ ARG CCACHE_VERSION
 ARG BUILD_ESSENTIAL_VERSION=12.10ubuntu1
 ARG PKG_CONFIG_VERSION=1.8.1-2build1
 ARG NASM_VERSION=2.16.01-1build1
+# Keep retries disabled for the unpatched base APT client in this builder.
 RUN <<BUILD
 apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=0 update
-# Keep retries disabled for the unpatched base APT client in this builder.
 apt-get -o Acquire::Retries=0 install -y --no-install-recommends \
     "build-essential=${BUILD_ESSENTIAL_VERSION}" \
     "ca-certificates=${CA_CERTIFICATES_VERSION}" \

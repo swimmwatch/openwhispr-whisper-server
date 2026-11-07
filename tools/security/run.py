@@ -117,20 +117,25 @@ class ScanSession:
 
     def add(self, target: str, scanner: str, command: list[str]) -> None:
         now = datetime.now(UTC).isoformat()
+        stage = "scanner_execution"
 
         try:
             code, stdout = execute(command)
             require(not scanner.startswith("trivy") or code == 0, "Trivy execution failed")
 
+            stage = "report_validation"
             raw = json_stream(stdout) if scanner == "govulncheck" else json.loads(stdout)
             result = check.evaluate(scanner, raw, code, self.exceptions)
+            stage = "scanner_identity"
             with (self.binaries / check.TARGETS.get(target, "trivy")).open("rb") as binary:
                 rule_identity = hashlib.file_digest(binary, "sha256")
             if scanner.startswith("trivy"):
+                stage = "scanner_metadata"
                 _, metadata = execute(
                     self.trivy + ["--cache-dir", str(self.cache), "--version", "--format", "json"]
                 )
                 if scanner == "trivy-vuln":
+                    stage = "database_freshness"
                     validate_database_metadata(json.loads(metadata))
 
                 rule_identity.update(metadata.encode())
@@ -139,6 +144,7 @@ class ScanSession:
                     json.dumps([x["config"] for x in raw if "config" in x], sort_keys=True).encode()
                 )
 
+            stage = "report_identity"
             result.update(
                 target=target,
                 scanner_version=check.expected_version(target),
@@ -150,6 +156,7 @@ class ScanSession:
             )
 
             if target == "backend-vuln" or target == "api-vuln":
+                stage = "native_component_review"
                 role = target.split("-")[0]
                 result["coverage_gaps"] = component_coverage(
                     self.advisories, role, self.builds[role]["build_input_identity"]
@@ -182,6 +189,7 @@ class ScanSession:
                     {
                         "target": target,
                         "status": "failed",
+                        "stage": stage,
                         "detail": "Raw scanner output suppressed",
                     }
                 )

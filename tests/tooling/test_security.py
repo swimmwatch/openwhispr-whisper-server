@@ -500,13 +500,63 @@ class ScanSessionTests(unittest.TestCase):
             self.assertEqual(session.reports[0]["target"], "dockerfile-backend")
             self.assertNotIn(marker, output.getvalue())
             self.assertNotIn("findings", output.getvalue())
+            self.assertEqual(
+                json.loads(output.getvalue().splitlines()[0])["stage"], "scanner_execution"
+            )
+
+    def test_native_review_drift_is_distinct_from_successful_vulnerability_scanning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "trivy").write_bytes(b"pinned fixture")
+            advisory_path = root / "advisories.json"
+            advisory_path.write_text(
+                json.dumps({"schema_version": 1, "build_input_identity": "sha256:" + "a" * 64})
+            )
+            session = run.ScanSession(
+                root,
+                {},
+                {"api": {"build_input_identity": "sha256:" + "b" * 64}},
+                [],
+                advisory_path,
+                [],
+                root,
+            )
+            raw = {
+                "SchemaVersion": 2,
+                "Results": [{"Class": "os-pkgs", "Type": "ubuntu", "Target": "fixture"}],
+            }
+            now = datetime.now(UTC)
+            metadata = {
+                "VulnerabilityDB": {
+                    "Version": 2,
+                    "UpdatedAt": now.isoformat(),
+                    "NextUpdate": (now + timedelta(hours=1)).isoformat(),
+                }
+            }
+            output = io.StringIO()
+            with (
+                patch.object(
+                    run, "execute", side_effect=[(0, json.dumps(raw)), (0, json.dumps(metadata))]
+                ),
+                contextlib.redirect_stdout(output),
+            ):
+                session.add("api-vuln", "trivy-vuln", ["scanner"])
+
+            self.assertTrue(session.failed)
+            self.assertEqual(session.reports, [])
+            diagnostic = json.loads(output.getvalue())
+            self.assertEqual(diagnostic["status"], "failed")
+            self.assertEqual(diagnostic["stage"], "native_component_review")
 
     def test_successful_scanner_with_stale_database_has_no_accepted_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "trivy").write_bytes(b"pinned fixture")
             session = run.ScanSession(root, {}, {}, [], None, [], root)
-            raw = {"SchemaVersion": 2, "Results": [{"Vulnerabilities": []}]}
+            raw = {
+                "SchemaVersion": 2,
+                "Results": [{"Class": "os-pkgs", "Type": "ubuntu", "Target": "fixture"}],
+            }
             metadata = {
                 "VulnerabilityDB": {
                     "Version": 2,
@@ -525,7 +575,9 @@ class ScanSessionTests(unittest.TestCase):
 
             self.assertTrue(session.failed)
             self.assertEqual(session.reports, [])
-            self.assertEqual(json.loads(output.getvalue())["status"], "failed")
+            diagnostic = json.loads(output.getvalue())
+            self.assertEqual(diagnostic["status"], "failed")
+            self.assertEqual(diagnostic["stage"], "database_freshness")
 
     def test_public_findings_retain_only_safe_advisory_fields(self) -> None:
         result = check.safe_findings(

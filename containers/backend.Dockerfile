@@ -78,10 +78,10 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 ARG CURL_VERSION
 ARG CA_CERTIFICATES_VERSION
 ARG CCACHE_VERSION
+# Keep retries disabled for the unpatched base APT client in this builder.
 RUN <<BUILD
 rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
 apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=0 update
-# Keep retries disabled for the unpatched base APT client in this builder.
 apt-get -o Acquire::Retries=0 install -y --no-install-recommends \
     "ca-certificates=${CA_CERTIFICATES_VERSION}" \
     "ccache=${CCACHE_VERSION}" \
