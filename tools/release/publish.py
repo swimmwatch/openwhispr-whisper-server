@@ -96,7 +96,7 @@ def registry_get(
         server = "https://index.docker.io/v1/" if host == "docker.io" else host
         login = config.get("auths", {}).get(server, {}).get("auth")
         require(isinstance(login, str) and bool(login), "Registry login is unavailable")
-        token_request.add_header("Authorization", "Basic " + login)
+        token_request.add_unredirected_header("Authorization", "Basic " + login)
     try:
         with urllib.request.urlopen(token_request, timeout=120) as response:
             credentials = json.load(response)
@@ -106,7 +106,7 @@ def registry_get(
 
     token = credentials.get("token", credentials.get("access_token"))
     require(isinstance(token, str) and token, "Registry token is unavailable")
-    request.add_header("Authorization", "Bearer " + token)
+    request.add_unredirected_header("Authorization", "Bearer " + token)
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             return response.read()
@@ -160,13 +160,15 @@ def publish_chart(
     if existing is None:
         command([helm, "push", archive, "oci://ghcr.io/swimmwatch/charts"])
 
-        existing = manifest(CHART, version)
-
-    require(existing is not None, "Published chart manifest is unavailable")
-    observed = "sha256:" + hashlib.sha256(cast(bytes, existing)).hexdigest()
+    public = manifest(CHART, version)
+    require(
+        public is not None and (existing is None or public == existing),
+        "Published chart manifest is unavailable or changed",
+    )
+    observed = "sha256:" + hashlib.sha256(cast(bytes, public)).hexdigest()
     require(manifest_sha is None or observed == manifest_sha, "Immutable chart manifest collision")
 
-    layers = json.loads(cast(bytes, existing))["layers"]
+    layers = json.loads(cast(bytes, public))["layers"]
     layers = [
         item
         for item in layers
@@ -403,6 +405,8 @@ def main() -> int:
                 data.get(key) == value
                 for key, value in selected.items()
                 if key not in ("channel_status", "alias_status")
+                # The first verified chart upload resolves this previously unknown identity.
+                and not (key == "chart_oci_manifest_digest" and value is None)
             ),
             "Retry selection drift",
         )

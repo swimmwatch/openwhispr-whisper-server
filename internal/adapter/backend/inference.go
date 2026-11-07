@@ -3,7 +3,6 @@ package backend
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,14 +14,15 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 )
 
 const (
-	canonicalWAVHeaderBytes  = 44
-	canonicalWAVSampleBytes  = 2
-	canonicalWAVSampleRate   = 16000
-	canonicalWAVMinimumBytes = canonicalWAVHeaderBytes + canonicalWAVSampleBytes
+	// The pinned native log_mel_spectrogram reads 200 samples from samples+1
+	// (CVE-2026-17512). Keep its source unchanged and supply at least 201 frames.
+	nativeMinimumPCMFrames = 201
+	nativeMinimumWAVBytes  = wav.HeaderBytes + nativeMinimumPCMFrames*wav.FrameBytes
 )
 
 type operation struct {
@@ -61,8 +61,9 @@ func (s *Supervisor) begin(parent context.Context, compat domain.BackendCompatib
 	return op, nil
 }
 
-// Infer borrows an already bounded canonical WAV stream. Its owner keeps the
-// stream readable until this blocking call returns, including cancellation.
+// Infer borrows exactly Size bytes of an already bounded canonical WAV stream;
+// it does not require EOF or consume trailing bytes. Its owner keeps the stream
+// readable until this blocking call returns, including cancellation.
 func (s *Supervisor) Infer(ctx context.Context, request Request) (result domain.TranscriptionResult, err error) {
 	op, err := s.begin(ctx, request.Compatibility)
 	if err != nil {
@@ -81,19 +82,33 @@ func (s *Supervisor) infer(op *operation, request Request) (domain.Transcription
 	if err != nil {
 		return domain.TranscriptionResult{}, err
 	}
-	if request.Audio == nil || request.Size < canonicalWAVMinimumBytes || request.Size > s.opts.MaxWAVBytes {
+	if request.Audio == nil || request.Size < wav.MinBytes || request.Size > s.opts.MaxWAVBytes {
 		return domain.TranscriptionResult{}, failure(domain.InvalidInput, errNative)
 	}
 
-	var header [canonicalWAVHeaderBytes]byte
+	var header [wav.HeaderBytes]byte
 	if _, err := io.ReadFull(contextInput{op.ctx, request.Audio}, header[:]); err != nil {
 		return domain.TranscriptionResult{}, failure(domain.InvalidInput, err)
 	}
-	if !canonicalWAV(header[:], request.Size) {
+	if !wav.ValidHeader(header[:], request.Size) {
 		return domain.TranscriptionResult{}, failure(domain.UnsupportedAudio, errNative)
 	}
 
-	request.Audio = io.MultiReader(bytes.NewReader(header[:]), request.Audio)
+	if request.Size < nativeMinimumWAVBytes {
+		// Validate every declared sample before adding silence: an early EOF or
+		// source error must never be replaced by padding or submitted to native.
+		var wave [nativeMinimumWAVBytes]byte
+		if _, err := io.ReadFull(contextInput{op.ctx, request.Audio}, wave[wav.HeaderBytes:request.Size]); err != nil {
+			return domain.TranscriptionResult{}, failure(domain.InvalidInput, err)
+		}
+		paddedHeader := wav.Header(uint32(len(wave) - wav.HeaderBytes))
+		copy(wave[:], paddedHeader[:])
+		request.Audio = bytes.NewReader(wave[:])
+		// MaxWAVBytes bounds the original input; internal silence is fixed-size.
+		request.Size = int64(len(wave))
+	} else {
+		request.Audio = io.MultiReader(bytes.NewReader(header[:]), request.Audio)
+	}
 	request.Fields = fields
 	if err := op.ctx.Err(); err != nil {
 		return domain.TranscriptionResult{}, failure(domain.DeadlineExceeded, err)
@@ -127,37 +142,16 @@ func (s *Supervisor) inferenceFields(fields domain.InferenceFields) (domain.Infe
 	return fields, nil
 }
 
-func canonicalWAV(h []byte, size int64) bool {
-	if string(h[:4]) != "RIFF" || string(h[8:16]) != "WAVEfmt " {
-		return false
-	}
-	if binary.LittleEndian.Uint32(h[4:]) != uint32(size-8) || size-8 > math.MaxUint32 {
-		return false
-	}
-	if binary.LittleEndian.Uint32(h[16:]) != 16 || binary.LittleEndian.Uint16(h[20:]) != 1 ||
-		binary.LittleEndian.Uint16(h[22:]) != 1 {
-		return false
-	}
-	if binary.LittleEndian.Uint32(h[24:]) != canonicalWAVSampleRate ||
-		binary.LittleEndian.Uint32(h[28:]) != canonicalWAVSampleRate*canonicalWAVSampleBytes {
-		return false
-	}
-	if binary.LittleEndian.Uint16(h[32:]) != canonicalWAVSampleBytes || binary.LittleEndian.Uint16(h[34:]) != 16 ||
-		string(h[36:40]) != "data" {
-		return false
-	}
-
-	dataBytes := size - canonicalWAVHeaderBytes
-	return int64(binary.LittleEndian.Uint32(h[40:])) == dataBytes && dataBytes%canonicalWAVSampleBytes == 0
-}
-
 func (s *Supervisor) callNative(op *operation, request Request) (domain.TranscriptionResult, error) {
+	// Native std::stof may throw on decimal underflow, even for subnormal values.
+	// Round to its float32 precision and encode exactly, preserving subnormals.
+	temperature := strconv.FormatFloat(float64(float32(request.Fields.Temperature)), 'x', -1, 32)
 	var framing bytes.Buffer
 	form := multipart.NewWriter(&framing)
 	for _, field := range [][2]string{
 		{"language", request.Fields.Language},
 		{"prompt", request.Fields.Prompt},
-		{"temperature", strconv.FormatFloat(request.Fields.Temperature, 'f', -1, 64)},
+		{"temperature", temperature},
 		{"carry_initial_prompt", "false"},
 		{"response_format", "json"},
 	} {

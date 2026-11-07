@@ -3,7 +3,7 @@ description: Propose a focused improvement.
 body:
   - type: markdown
     attributes:
-      value: "Never include credentials, private audio or transcripts. Changes to approved scope need agreement before implementation."
+      value: "Check the [Resident V1 scope and future work](https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/README.md#future-work) first. Explain the user need without treating deferred features as delivered. Never include credentials, private audio or transcripts. Changes to approved scope need agreement before implementation."
   - type: textarea
     id: problem
     attributes:

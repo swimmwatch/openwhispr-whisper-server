@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
 	"golang.org/x/sys/unix"
 )
@@ -21,10 +22,8 @@ const (
 )
 
 type artifactCache struct {
-	root      *os.Root
 	artifacts *os.Root
 	locks     *os.Root
-	path      string
 }
 
 func openCache(path string) (*artifactCache, error) {
@@ -44,7 +43,9 @@ func openCache(path string) (*artifactCache, error) {
 		return nil, err
 	}
 
-	cache := &artifactCache{root: root, path: path}
+	defer root.Close()
+
+	cache := &artifactCache{}
 	for _, target := range []struct {
 		name string
 		root **os.Root
@@ -80,7 +81,6 @@ func (c *artifactCache) close() {
 	if c.locks != nil {
 		_ = c.locks.Close()
 	}
-	_ = c.root.Close()
 }
 
 func openRegular(root *os.Root, name string) (*os.File, error) {
@@ -142,16 +142,16 @@ func (c *artifactCache) lock(ctx context.Context, hash string) (*os.File, error)
 	return nil, err
 }
 
-func (c *artifactCache) obtain(ctx context.Context, model config.Model, opts Options, client *http.Client, download bool) (Artifact, error) {
+func (c *artifactCache) obtain(ctx context.Context, model config.Model, opts Options, client *http.Client, download bool) (domain.ModelArtifact, error) {
 	hash := strings.ToLower(model.Source.SHA256)
 	lock, err := c.lock(ctx, hash)
 	if err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 	defer lock.Close() // Closing the last descriptor releases flock; never unlink it.
 
 	if err := c.cleanPartials(ctx, hash); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	name := hash + ".bin"
@@ -160,23 +160,23 @@ func (c *artifactCache) obtain(ctx context.Context, model config.Model, opts Opt
 		artifact, verifyErr := verifyArtifact(ctx, file, model)
 		_ = file.Close()
 		if verifyErr == nil {
-			artifact.Path = filepath.Join(c.path, "artifacts", name)
+			artifact.Path = filepath.Join(c.artifacts.Name(), name)
 			return artifact, nil
 		}
 		if ctx.Err() != nil {
-			return Artifact{}, ctx.Err()
+			return domain.ModelArtifact{}, ctx.Err()
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	if !download {
-		return Artifact{}, errIntegrity
+		return domain.ModelArtifact{}, errIntegrity
 	}
 
 	for attempt := 0; attempt < opts.Attempts; attempt++ {
 		if err := ctx.Err(); err != nil {
-			return Artifact{}, err
+			return domain.ModelArtifact{}, err
 		}
 		artifact, downloadErr := c.download(ctx, model, client)
 		if downloadErr == nil {
@@ -185,15 +185,15 @@ func (c *artifactCache) obtain(ctx context.Context, model config.Model, opts Opt
 		err = downloadErr
 		if attempt+1 < opts.Attempts {
 			if err := pause(ctx, downloadRetryInterval); err != nil {
-				return Artifact{}, err
+				return domain.ModelArtifact{}, err
 			}
 		}
 	}
 
 	if ctx.Err() != nil {
-		return Artifact{}, ctx.Err()
+		return domain.ModelArtifact{}, ctx.Err()
 	}
-	return Artifact{}, err
+	return domain.ModelArtifact{}, err
 }
 
 func (c *artifactCache) cleanPartials(ctx context.Context, hash string) error {

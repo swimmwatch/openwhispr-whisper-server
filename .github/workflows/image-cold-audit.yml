@@ -1,0 +1,214 @@
+name: Image cold audit
+
+'on':
+  schedule:
+  - cron: '23 3 * * 1'
+  workflow_dispatch: null
+
+permissions: {}
+
+concurrency:
+  group: whisper-image-cold-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+# Diagnostic evidence only: no release selection, registry login or publication.
+jobs:
+  build:
+    name: cold-${{ matrix.role }}
+    if: github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main'
+    runs-on: &runner ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        role:
+        - api
+        - backend
+    steps:
+    - uses: &checkout actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: &ci_config ./.github/actions/ci-config
+
+    - name: Set up locked Python tooling
+      uses: &setup_python ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - name: Build and verify cold image on a fresh isolated builder
+      uses: ./.github/actions/build-image
+      with:
+        role: ${{ matrix.role }}
+        source-sha: ${{ github.sha }}
+        cold: 'true'
+        cache-access: none
+
+    - uses: &upload_artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: ${{ matrix.role }}
+        path: |
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.tar
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.json
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/cache.json
+        if-no-files-found: error
+        compression-level: ${{ env.CI_ARTIFACT_COMPRESSION_LEVEL }}
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
+
+  chart:
+    if: github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main'
+    runs-on: *runner
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: *setup_python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - uses: &setup_go actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: &cache_tools ./.github/actions/cache-tools
+
+    - name: Install pinned Helm tools
+      run: uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/chart-tools"
+        --tools helm3 helm4 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+
+    - name: Run actual Helm lint and chart behavior tests
+      env:
+        P06_CHART_TESTS: '1'
+        P06_HELM3: ${{ runner.temp }}/chart-tools/helm3
+        P06_HELM4: ${{ runner.temp }}/chart-tools/helm4
+        PYTHON: ${{ github.workspace }}/.venv/bin/python
+      run: go test -vet=off ./tests/integration -run '^TestChart' -count=1 -parallel "$GOMAXPROCS"
+
+    - name: Package actual chart scan inputs
+      run: uv run --no-sync --no-dev python tools/release/artifacts.py chart --helm "$RUNNER_TEMP/chart-tools/helm3"
+        --source-sha "$GITHUB_SHA" --output "$RUNNER_TEMP/artifacts/chart"
+
+    - uses: *upload_artifact
+      with:
+        name: chart
+        path: ${{ runner.temp }}/artifacts/chart
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
+
+  image-runtime:
+    needs:
+    - chart
+    - build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/image-runtime.yml
+    with:
+      source-sha: ${{ github.sha }}
+
+  scan:
+    name: Cold audit security and required-job gate
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      github.event.repository.default_branch == 'main'
+    needs:
+    - chart
+    - build
+    - image-runtime
+    runs-on: *runner
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: *ci_config
+
+    - name: Set up locked Python tooling
+      uses: *setup_python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - name: Reject unsuccessful or missing actual artifact/runtime jobs
+      env:
+        NEEDS: ${{ toJSON(needs) }}
+      run: uv run --no-sync --no-dev python tools/release/artifacts.py jobs --needs "$NEEDS"
+        --required chart build image-runtime
+
+    - uses: *setup_go
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Cache verified tool downloads
+      uses: *cache_tools
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        path: ${{ runner.temp }}/artifacts
+
+    - name: Cache vulnerability database only
+      uses: ./.github/actions/cache-trivy-db
+
+    - name: Install pinned scanners
+      run: |
+        uv run --no-sync --no-dev python tools/install_ci.py --destination "$RUNNER_TEMP/security-tools" --tools govulncheck gosec hadolint buildx helm3 --download-cache "$CI_DOWNLOAD_CACHE_DIR" --jobs "$CI_TOOL_JOBS"
+        echo "$RUNNER_TEMP/security-tools" >> "$GITHUB_PATH"
+
+    - name: Set up verified Trivy
+      uses: ./.github/actions/setup-trivy
+      with:
+        destination: ${{ runner.temp }}/security-tools
+        cache: 'true'
+
+    - name: Verify transferred OCI and chart bytes
+      run: uv run --no-sync --no-dev python tools/release/artifacts.py unpack --artifacts "$RUNNER_TEMP/artifacts"
+
+    - name: Exercise disposable registry and Helm index publication fixtures
+      env:
+        C02_PUBLISHER_TESTS: '1'
+        C02_ARTIFACTS: ${{ runner.temp }}/artifacts
+        C02_HELM: ${{ runner.temp }}/security-tools/helm3
+      run: uv run --no-sync --no-dev python -m unittest tests.tooling.test_publisher_execution -v
+
+    - name: Exercise real scanner denial fixtures
+      env:
+        C02_SCANNER_TESTS: '1'
+        C02_SCANNER_BIN: ${{ runner.temp }}/security-tools
+      run: uv run --no-sync --no-dev python -m unittest tests.tooling.test_scanner_execution -v
+
+    - name: Run and validate every required actual scanner target
+      run: |
+        uv run --no-sync --no-dev python tools/security/run.py --artifacts "$RUNNER_TEMP/artifacts" --bin "$RUNNER_TEMP/security-tools" --output "$RUNNER_TEMP/security.json" --db-cache "$CI_TRIVY_CACHE_DIR"
+        uv run --no-sync --no-dev python tools/security/check.py --stage complete --inventory "$RUNNER_TEMP/security.json"
+
+    - name: Preserve safe scanner evidence
+      if: ${{ always() }}
+      uses: *upload_artifact
+      with:
+        name: cold-audit-security
+        path: ${{ runner.temp }}/security.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}

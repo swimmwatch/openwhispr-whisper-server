@@ -41,7 +41,7 @@ class EchoSecurityScopeTests(unittest.TestCase):
             self.assertIn("github.com/labstack/echo/v5/middleware.Proxy", result.stdout.decode())
 
     def test_echo_proxy_is_not_linked_into_either_entrypoint(self) -> None:
-        """The exact Proxy-only advisory exception expires or fails if its code is used."""
+        """Neither service entrypoint links the optional Echo reverse-proxy middleware."""
         environment = dict(os.environ, CGO_ENABLED="0", GOOS="linux", GOARCH="amd64")
         with tempfile.TemporaryDirectory(prefix="whisper-echo-scope-") as td:
             for role in ("api", "backend"):

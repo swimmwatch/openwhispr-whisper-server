@@ -5,7 +5,7 @@ ARG GO_BUILD_IMAGE=golang:${GO_VERSION}-bookworm@sha256:fea12ba16096adec0f699ce1
 ARG UBUNTU_IMAGE=ubuntu:24.04@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc
 
 ARG CURL_VERSION=8.5.0-2ubuntu10.16
-ARG CA_CERTIFICATES_VERSION=20260816ubuntu0.24.04.1
+ARG CA_CERTIFICATES_VERSION=20260816ubuntu0.24.04.2
 ARG CCACHE_VERSION=4.9.1-1
 ARG APT_RETRIES=3
 
@@ -30,7 +30,8 @@ ENV CGO_ENABLED=0 \
     GOWORK=off
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN --mount=type=cache,id=whisper-go-mod-${GO_VERSION}-amd64,target=/go/pkg/mod <<BUILD
+# Export modules in a normal layer: remote build caches do not restore cache mounts.
+RUN <<BUILD
 test "$(go env GOVERSION)" = "go${GO_VERSION}"
 go mod download
 go mod verify
@@ -39,8 +40,7 @@ BUILD
 COPY cmd/api ./cmd/api
 COPY internal ./internal
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
-RUN --mount=type=cache,id=whisper-go-mod-${GO_VERSION}-amd64,target=/go/pkg/mod \
-    --mount=type=cache,id=whisper-go-build-${GO_VERSION}-amd64,target=/root/.cache/go-build <<BUILD
+RUN --mount=type=cache,id=whisper-go-build-${GO_VERSION}-amd64,target=/root/.cache/go-build <<BUILD
 go mod verify
 mkdir -p /out/licenses/go
 go build -trimpath -buildvcs=false -o /out/whisper-api ./cmd/api
@@ -72,13 +72,13 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 ARG CURL_VERSION
 ARG CA_CERTIFICATES_VERSION
 ARG CCACHE_VERSION
-ARG APT_RETRIES
 ARG BUILD_ESSENTIAL_VERSION=12.10ubuntu1
 ARG PKG_CONFIG_VERSION=1.8.1-2build1
 ARG NASM_VERSION=2.16.01-1build1
+# Keep retries disabled for the unpatched base APT client in this builder.
 RUN <<BUILD
-apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries="${APT_RETRIES}" update
-apt-get install -y --no-install-recommends \
+apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=0 update
+apt-get -o Acquire::Retries=0 install -y --no-install-recommends \
     "build-essential=${BUILD_ESSENTIAL_VERSION}" \
     "ca-certificates=${CA_CERTIFICATES_VERSION}" \
     "ccache=${CCACHE_VERSION}" \
@@ -139,7 +139,7 @@ printf 'BUILD_JOBS=%s\n' "$jobs"
     --enable-protocol=pipe,cache \
     --disable-demuxers \
     --enable-demuxer=wav,mp3,mov,ogg,flac,matroska,mpegps \
-    --disable-decoder=h264 \
+    --disable-decoder=h264,g2m,pcx,sunrast,cdxl,huffyuv,ffvhuff,hymt \
     --disable-parser=h264,dvdsub \
     --disable-encoders \
     --enable-encoder=pcm_s16le \
@@ -161,6 +161,10 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 ARG CURL_VERSION
 ARG CA_CERTIFICATES_VERSION
 ARG APT_RETRIES
+ARG APT_VERSION=2.8.4ubuntu0.1
+ARG BROTLI_VERSION=1.1.0-2ubuntu0.1
+ARG PCRE2_VERSION=10.42-4ubuntu2.2
+ARG ZLIB_VERSION=1:1.3.dfsg-3.1ubuntu2.3
 ARG RUNTIME_UID
 ARG RUNTIME_GID
 RUN <<BUILD
@@ -173,10 +177,17 @@ for identity in "${RUNTIME_UID}" "${RUNTIME_GID}"; do
     esac
 done
 
-apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries="${APT_RETRIES}" update
-apt-get install -y --no-install-recommends \
+apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=0 update
+# Disable retries while the base APT client installs its own security fix.
+apt-get -o Acquire::Retries=0 install -y --no-install-recommends \
+    "apt=${APT_VERSION}" \
+    "libapt-pkg6.0t64=${APT_VERSION}"
+apt-get -o Acquire::Retries="${APT_RETRIES}" install -y --no-install-recommends \
     "ca-certificates=${CA_CERTIFICATES_VERSION}" \
-    "curl=${CURL_VERSION}"
+    "curl=${CURL_VERSION}" \
+    "libbrotli1=${BROTLI_VERSION}" \
+    "libpcre2-8-0=${PCRE2_VERSION}" \
+    "zlib1g=${ZLIB_VERSION}"
 rm -rf /var/lib/apt/lists/*
 
 groupadd --gid "${RUNTIME_GID}" whisper

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
 )
 
@@ -18,25 +19,18 @@ type Options struct {
 	Timeout  time.Duration
 }
 
-type Artifact struct {
-	ID       string
-	Path     string
-	SHA256   string
-	Metadata Metadata
-}
-
-func Provision(ctx context.Context, opts Options, client *http.Client) (Artifact, error) {
+func Provision(ctx context.Context, opts Options, client *http.Client) (domain.ModelArtifact, error) {
 	opts.Models.Catalog = slices.Clone(opts.Models.Catalog)
 	opts.Models.DownloadSet = slices.Clone(opts.Models.DownloadSet)
 	if opts.Models.Validate() != nil || !filepath.IsAbs(opts.CacheDir) || opts.Attempts <= 0 || opts.Timeout <= 0 ||
 		client == nil {
-		return Artifact{}, config.ErrInvalid
+		return domain.ModelArtifact{}, config.ErrInvalid
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
-		return Artifact{}, provisioningFailure(err)
+		return domain.ModelArtifact{}, provisioningFailure(err)
 	}
 
 	byID := make(map[string]config.Model, len(opts.Models.Catalog))
@@ -50,16 +44,16 @@ func Provision(ctx context.Context, opts Options, client *http.Client) (Artifact
 		var err error
 		cache, err = openCache(opts.CacheDir)
 		if err != nil {
-			return Artifact{}, provisioningFailure(err)
+			return domain.ModelArtifact{}, provisioningFailure(err)
 		}
 		defer cache.close()
 	}
 
-	var artifact Artifact
+	var artifact domain.ModelArtifact
 	for _, id := range opts.Models.DownloadSet {
 		prepared, err := cache.obtain(ctx, byID[id], opts, client, true)
 		if err != nil {
-			return Artifact{}, provisioningFailure(err)
+			return domain.ModelArtifact{}, provisioningFailure(err)
 		}
 		if id == served.ID {
 			artifact = prepared
@@ -73,20 +67,20 @@ func Provision(ctx context.Context, opts Options, client *http.Client) (Artifact
 	if served.Source.Kind == "prepared" {
 		file, err := openRegular(nil, served.Source.Path)
 		if err != nil {
-			return Artifact{}, provisioningFailure(err)
+			return domain.ModelArtifact{}, provisioningFailure(err)
 		}
 		defer file.Close()
 		artifact, err = verifyArtifact(ctx, file, served)
 		artifact.Path = served.Source.Path
 		if err != nil {
-			return Artifact{}, provisioningFailure(err)
+			return domain.ModelArtifact{}, provisioningFailure(err)
 		}
 		return artifact, nil
 	}
 
 	artifact, err := cache.obtain(ctx, served, opts, client, false)
 	if err != nil {
-		return Artifact{}, provisioningFailure(err)
+		return domain.ModelArtifact{}, provisioningFailure(err)
 	}
 	return artifact, nil
 }

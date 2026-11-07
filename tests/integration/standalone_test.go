@@ -15,6 +15,19 @@ import (
 	"time"
 )
 
+func writeContainerFixture(t *testing.T, path string, data []byte, mode os.FileMode) {
+	t.Helper()
+
+	if err := os.WriteFile(path, data, mode); err != nil {
+		t.Fatal(err)
+	}
+	// The image's UID differs from the test runner; keep synthetic fixtures
+	// readable/executable even when the host uses a private umask.
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPrivateNetworkHelper(t *testing.T) {
 	if os.Getenv("P05_NETWORK_HELPER") != "1" {
 		return
@@ -41,6 +54,83 @@ func TestPrivateNetworkHelper(t *testing.T) {
 	}
 }
 
+type privatePair struct {
+	project, apiID, backendID, address string
+}
+
+func startPrivatePair(t *testing.T, settings map[string]any, helperTest string) privatePair {
+	t.Helper()
+
+	pair := privatePair{project: "whisper-p05-" + fmt.Sprint(time.Now().UnixNano())}
+	dir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	helperData, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := filepath.Join(dir, "network-helper")
+	writeContainerFixture(t, helper, helperData, 0755)
+
+	api := object(t, settings["api"])
+	apiPort := fmt.Sprint(api["port"])
+	backendPort := fmt.Sprint(object(t, settings["backend"])["port"])
+	api["backendUrl"] = "http://backend:" + backendPort
+	stack := yamlObject(t, "deploy/compose.yaml")
+	services := object(t, stack["services"])
+	backend := object(t, services["backend"])
+	// Replace only the GPU-dependent process with an explicitly CPU-only fixture.
+	// Security, mounts and topology still come from the canonical Compose stack.
+	delete(backend, "deploy")
+	backend["entrypoint"] = []string{"/p05-network-helper"}
+	backend["command"] = []string{"-test.run=^" + helperTest + "$"}
+	backend["environment"] = map[string]string{
+		"P05_NETWORK_HELPER":      "1",
+		"P05_NETWORK_HELPER_PORT": backendPort,
+		"NVIDIA_VISIBLE_DEVICES":  "void",
+	}
+	backend["volumes"] = append(backend["volumes"].([]any), map[string]any{
+		"type": "bind", "source": helper, "target": "/p05-network-helper", "read_only": true,
+	})
+	for _, role := range []string{"api", "backend"} {
+		service := object(t, services[role])
+		service["runtime"] = "runc"
+		service["pull_policy"] = "never"
+	}
+	data, err := json.Marshal(stack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(dir, "compose.json")
+	if err := os.WriteFile(fixture, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(dir, "config.json")
+	writeContainerFixture(t, configFile, configuration, 0644)
+	env := filepath.Join(dir, "compose.env")
+	contents := fmt.Sprintf(
+		"WHISPER_API_IMAGE=%s\nWHISPER_BACKEND_IMAGE=%s\nWHISPER_CONFIG_FILE=%s\nWHISPER_PREPARED_DIR=%s\nWHISPER_API_PORT=0\nWHISPER_API_CONTAINER_PORT=%s\nWHISPER_BACKEND_CONTAINER_PORT=%s\n",
+		image("api"), image("backend"), configFile, dir, apiPort, backendPort)
+	if err := os.WriteFile(env, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	compose := func(args ...string) []byte {
+		return docker(t, append([]string{"compose", "-p", pair.project, "--env-file", env, "-f", fixture}, args...)...)
+	}
+	t.Cleanup(func() { compose("down", "--volumes", "--timeout", "5") })
+	compose("up", "-d")
+	pair.apiID = strings.TrimSpace(string(compose("ps", "-q", "api")))
+	pair.backendID = strings.TrimSpace(string(compose("ps", "-q", "backend")))
+	pair.address = strings.TrimSpace(string(compose("port", "api", apiPort)))
+	return pair
+}
+
 func TestStandalonePrivateNetwork(t *testing.T) {
 	imageTests(t)
 
@@ -50,81 +140,12 @@ func TestStandalonePrivateNetwork(t *testing.T) {
 		{8080, 8081}, {18080, 18081},
 	} {
 		t.Run(fmt.Sprintf("api=%d/backend=%d", ports.api, ports.backend), func(t *testing.T) {
-			suffix := fmt.Sprint(time.Now().UnixNano())
-			project, outside := "whisper-p05-"+suffix, "whisper-p05-outside-"+suffix
-			dir := t.TempDir()
-			executable, err := os.Executable()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			stack := yamlObject(t, "deploy/compose.yaml")
-			services := object(t, stack["services"])
-			backend := object(t, services["backend"])
-			// Only the GPU-dependent process is replaced; topology/security/mounts come
-			// from the canonical stack. CUDA requests are qualified separately in P07.
-			delete(backend, "deploy")
-			backend["entrypoint"] = []string{"/p05-network-helper"}
-			backend["command"] = []string{"-test.run=^TestPrivateNetworkHelper$"}
-			backend["environment"] = map[string]string{
-				"P05_NETWORK_HELPER":      "1",
-				"P05_NETWORK_HELPER_PORT": fmt.Sprint(ports.backend),
-				"NVIDIA_VISIBLE_DEVICES":  "void",
-			}
-			backend["volumes"] = append(backend["volumes"].([]any), map[string]any{
-				"type":      "bind",
-				"source":    executable,
-				"target":    "/p05-network-helper",
-				"read_only": true,
-			})
-			for _, role := range []string{"api", "backend"} {
-				s := object(t, services[role])
-				s["runtime"] = "runc"
-				s["pull_policy"] = "never"
-			}
-
-			data, err := json.Marshal(stack)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			fixture := filepath.Join(dir, "compose.json")
-			if err := os.WriteFile(fixture, data, 0600); err != nil {
-				t.Fatal(err)
-			}
-
-			env := filepath.Join(dir, "compose.env")
 			settings := defaultSettings(t)
-			api := object(t, settings["api"])
-			api["port"] = ports.api
-			api["backendUrl"] = fmt.Sprintf("http://backend:%d", ports.backend)
+			object(t, settings["api"])["port"] = ports.api
 			object(t, settings["backend"])["port"] = ports.backend
-			config, err := json.Marshal(settings)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			configFile := filepath.Join(dir, "config.json")
-			if err := os.WriteFile(configFile, config, 0644); err != nil {
-				t.Fatal(err)
-			}
-
-			contents := fmt.Sprintf(
-				"WHISPER_API_IMAGE=%s\nWHISPER_BACKEND_IMAGE=%s\nWHISPER_CONFIG_FILE=%s\nWHISPER_PREPARED_DIR=%s\nWHISPER_API_PORT=0\nWHISPER_API_CONTAINER_PORT=%d\nWHISPER_BACKEND_CONTAINER_PORT=%d\n",
-				image("api"), image("backend"), configFile, dir, ports.api, ports.backend)
-			if err := os.WriteFile(env, []byte(contents), 0600); err != nil {
-				t.Fatal(err)
-			}
-
-			compose := func(args ...string) []byte {
-				return docker(t, append([]string{"compose", "-p", project, "--env-file", env, "-f", fixture}, args...)...)
-			}
-			t.Cleanup(func() {
-				compose("down", "--volumes", "--timeout", "5")
-			})
-			compose("up", "-d")
-			apiID := strings.TrimSpace(string(compose("ps", "-q", "api")))
-			backendID := strings.TrimSpace(string(compose("ps", "-q", "backend")))
+			pair := startPrivatePair(t, settings, "TestPrivateNetworkHelper")
+			apiID, backendID := pair.apiID, pair.backendID
+			outside := pair.project + "-outside"
 			deadline := time.Now().Add(10 * time.Second)
 			for {
 				probe := docker(
@@ -146,7 +167,7 @@ func TestStandalonePrivateNetwork(t *testing.T) {
 				t.Fatal("API cannot reach paired private backend")
 			}
 
-			address := strings.TrimSpace(string(compose("port", "api", fmt.Sprint(ports.api))))
+			address := pair.address
 			client := &http.Client{Timeout: 2 * time.Second}
 			reply, err := client.Get("http://" + address + "/health/live")
 			if err != nil {
@@ -221,14 +242,10 @@ func TestStandaloneWiring(t *testing.T) {
 	}
 
 	cfg := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(cfg, data, 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeContainerFixture(t, cfg, data, 0644)
 
 	model := standaloneModel(t)
-	if err := os.WriteFile(filepath.Join(dir, "model.bin"), model, 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeContainerFixture(t, filepath.Join(dir, "model.bin"), model, 0644)
 	for _, role := range []string{"api", "backend"} {
 		t.Run(role, func(t *testing.T) {
 			volume := fmt.Sprintf("whisper-p05-%s-%d", role, time.Now().UnixNano())
@@ -358,9 +375,7 @@ func TestStandaloneCachedStartup(t *testing.T) {
 	}
 
 	config := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(config, data, 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeContainerFixture(t, config, data, 0644)
 
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	cache, work := "whisper-p05-cache-"+suffix, "whisper-p05-work-"+suffix

@@ -1,10 +1,11 @@
 import contextlib
 import copy
+import hashlib
 import io
 import json
 import tempfile
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -17,21 +18,123 @@ DIGEST = "sha256:" + "2" * 64
 
 
 class ScannerReportTests(unittest.TestCase):
-    def test_published_echo_advisory_cve_aliases_preserve_exact_scope(self) -> None:
-        exceptions = json.loads(Path("tools/security/exceptions.json").read_text())
-        findings = [
-            {"VulnerabilityID": rule, "PkgName": package, "Severity": "HIGH"}
-            for rule, package in (
-                ("CVE-2026-118264", "github.com/labstack/echo/v5"),
-                ("CVE-2026-118262", "github.com/labstack/echo/v5"),
-                ("CVE-2026-118264", "github.com/labstack/echo/v4"),
-                ("CVE-2026-999999", "github.com/labstack/echo/v5"),
-            )
+    def test_trivy_requires_coverage_for_the_requested_scanner(self) -> None:
+        for scanner in ("trivy-config", "trivy-vuln"):
+            for result in ({}, {"Class": "secret", "Target": "source", "Secrets": []}):
+                with self.subTest(scanner=scanner, result=result), self.assertRaises(ValueError):
+                    check.evaluate(scanner, {"SchemaVersion": 2, "Results": [result]}, 0)
+
+    def test_trivy_rejects_malformed_finding_severity(self) -> None:
+        for scanner, field, kind in (
+            ("trivy-config", "Misconfigurations", "config"),
+            ("trivy-vuln", "Vulnerabilities", "os-pkgs"),
+        ):
+            for severity in (None, "", "high", "UNSUPPORTED"):
+                result = {
+                    "Class": kind,
+                    "Target": "fixture",
+                    "Type": "dockerfile" if kind == "config" else "ubuntu",
+                    field: [{"ID": "AVD-DS-0002", "Status": "FAIL", "Severity": severity}],
+                }
+                with (
+                    self.subTest(scanner=scanner, severity=severity),
+                    self.assertRaises(ValueError),
+                ):
+                    check.evaluate(scanner, {"SchemaVersion": 2, "Results": [result]}, 0)
+
+    def test_vulnerability_status_cannot_bypass_severity_policy(self) -> None:
+        for status in ("PASS", "EXCEPTION"):
+            raw = {
+                "SchemaVersion": 2,
+                "Results": [
+                    {
+                        "Class": "os-pkgs",
+                        "Type": "ubuntu",
+                        "Target": "fixture",
+                        "Vulnerabilities": [
+                            {
+                                "VulnerabilityID": "CVE-2026-12345",
+                                "PkgName": "fixture",
+                                "Severity": "HIGH",
+                                "Status": status,
+                            }
+                        ],
+                    }
+                ],
+            }
+            with self.subTest(status=status):
+                self.assertEqual(check.evaluate("trivy-vuln", raw, 0)["blocking_count"], 1)
+
+    def test_config_report_without_evaluated_rules_is_not_clean(self) -> None:
+        raw = {
+            "SchemaVersion": 2,
+            "Results": [
+                {
+                    "Class": "config",
+                    "Type": "helm",
+                    "Target": "fixture",
+                }
+            ],
+        }
+        with self.assertRaises(ValueError):
+            check.evaluate("trivy-config", raw, 0)
+
+    def test_reported_suppressions_require_project_review_not_scanner_waivers(self) -> None:
+        for scanner, kind, field in (
+            ("trivy-config", "config", "Misconfigurations"),
+            ("trivy-vuln", "os-pkgs", "Vulnerabilities"),
+            ("trivy-secret", "secret", "Secrets"),
+        ):
+            result = {
+                "Class": kind,
+                "Target": "fixture",
+                "Type": "fixture",
+                field: [],
+                "ExperimentalModifiedFindings": [
+                    {"Status": "ignored", "Finding": {"Severity": "HIGH"}}
+                ],
+            }
+            with self.subTest(scanner=scanner), self.assertRaisesRegex(ValueError, "suppressed"):
+                check.evaluate(scanner, {"SchemaVersion": 2, "Results": [result]}, 0)
+
+    def test_govulncheck_missing_reachability_is_not_a_clean_finding(self) -> None:
+        config = {"config": {"scanner_name": "govulncheck", "protocol_version": "v1.0.0"}}
+        for finding in ({"osv": "GO-2026-1234"}, {"osv": "GO-2026-1234", "trace": []}):
+            with self.subTest(finding=finding), self.assertRaises(ValueError):
+                check.evaluate("govulncheck", [config, {"finding": finding}], 0)
+
+    def test_only_evaluated_successful_config_rules_are_clean(self) -> None:
+        result: dict[str, Any] = {
+            "Class": "config",
+            "Type": "kubernetes",
+            "Target": "fixture",
+            "Misconfigurations": [{"ID": "AVD-KSV-0001", "Severity": "HIGH", "Status": "PASS"}],
+        }
+        raw = {"SchemaVersion": 2, "Results": [result]}
+        self.assertEqual(check.evaluate("trivy-config", raw, 0)["blocking_count"], 0)
+        for status in ("EXCEPTION", "", None):
+            result["Misconfigurations"][0]["Status"] = status
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                check.evaluate("trivy-config", raw, 0)
+
+    def test_covered_clean_packages_and_uncalled_go_findings_remain_nonblocking(self) -> None:
+        raw = {
+            "SchemaVersion": 2,
+            "Results": [
+                {
+                    "Class": "os-pkgs",
+                    "Type": "ubuntu",
+                    "Target": "fixture",
+                }
+            ],
+        }
+        self.assertEqual(check.evaluate("trivy-vuln", raw, 0)["blocking_count"], 0)
+        stream = [
+            {"config": {"scanner_name": "govulncheck", "protocol_version": "v1.0.0"}},
+            {"finding": {"osv": "GO-2026-1234", "trace": [{"module": "fixture"}]}},
         ]
-        raw = {"SchemaVersion": 2, "Results": [{"Vulnerabilities": findings}]}
-        result = check.evaluate("trivy-vuln", raw, 0, exceptions, NOW)
-        self.assertEqual(result["blocking_count"], 2)
-        self.assertEqual(result["exception_count"], 2)
+        result = check.evaluate("govulncheck", stream, 0)
+        self.assertEqual((result["finding_count"], result["blocking_count"]), (1, 0))
 
     def test_trivy_exception_matches_only_one_advisory_and_module(self) -> None:
         exception = {
@@ -48,6 +151,9 @@ class ScannerReportTests(unittest.TestCase):
             "SchemaVersion": 2,
             "Results": [
                 {
+                    "Class": "lang-pkgs",
+                    "Type": "gobinary",
+                    "Target": "fixture",
                     "Vulnerabilities": [
                         {
                             "VulnerabilityID": exception["rule"],
@@ -59,7 +165,7 @@ class ScannerReportTests(unittest.TestCase):
                             "PkgName": exception["path"],
                             "Severity": "HIGH",
                         },
-                    ]
+                    ],
                 }
             ],
         }
@@ -112,7 +218,14 @@ class ScannerReportTests(unittest.TestCase):
         for field in ("Vulnerabilities", "Misconfigurations"):
             raw = {
                 "SchemaVersion": 2,
-                "Results": [{field: [{"Severity": "HIGH", "Status": "FAIL", "FixedVersion": ""}]}],
+                "Results": [
+                    {
+                        "Class": "os-pkgs" if field == "Vulnerabilities" else "config",
+                        "Target": "fixture",
+                        "Type": "ubuntu" if field == "Vulnerabilities" else "dockerfile",
+                        field: [{"Severity": "HIGH", "Status": "FAIL", "FixedVersion": ""}],
+                    }
+                ],
             }
 
             self.assertEqual(
@@ -265,6 +378,24 @@ class SecurityAggregateTests(unittest.TestCase):
             ],
         }
 
+    def test_evidence_freshness_keeps_its_timezone_and_24_hour_boundary(self) -> None:
+        for timestamp, valid in (
+            ((NOW - timedelta(hours=24)).isoformat(), True),
+            (NOW.isoformat().replace("+00:00", "Z"), True),
+            ((NOW - timedelta(hours=24, microseconds=1)).isoformat(), False),
+            ((NOW + timedelta(microseconds=1)).isoformat(), False),
+            (NOW.replace(tzinfo=None).isoformat(), False),
+            (None, False),
+        ):
+            with self.subTest(timestamp=timestamp):
+                data = self.inventory()
+                data["reports"][0].update(scan_time=timestamp, database_checked_at=timestamp)
+                if valid:
+                    self.assertEqual(check.validate(data, NOW)["conclusion"], "success")
+                else:
+                    with self.assertRaisesRegex(ValueError, "Stale or invalid security timestamp"):
+                        check.validate(data, NOW)
+
     def test_complete_matching_coverage_passes(self) -> None:
         self.assertEqual(check.validate(self.inventory(), NOW)["conclusion"], "success")
 
@@ -314,6 +445,42 @@ class SecurityAggregateTests(unittest.TestCase):
 
 
 class ScanSessionTests(unittest.TestCase):
+    def test_rule_identity_retains_binary_then_exact_scanner_context(self) -> None:
+        config = {"scanner_name": "govulncheck", "protocol_version": "v1.0.0"}
+        metadata = '{"Version":"fixture-version","RuleBundle":"fixture-rules"}\n'
+        for target, scanner, raw, context in (
+            ("dockerfile-api", "hadolint", "[]", b""),
+            (
+                "package-secret",
+                "trivy-secret",
+                '{"SchemaVersion":2,"Results":[]}',
+                metadata.encode(),
+            ),
+            (
+                "go-vuln",
+                "govulncheck",
+                json.dumps({"config": config}),
+                json.dumps([config], sort_keys=True).encode(),
+            ),
+        ):
+            with self.subTest(scanner=scanner), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                binary = root / check.TARGETS[target]
+                observed = []
+                for content in (b"pinned executable A", b"pinned executable B"):
+                    binary.write_bytes(content)
+                    session = run.ScanSession(root, {}, {}, [], None, [], root)
+                    with (
+                        patch.object(run, "execute", side_effect=[(0, raw), (0, metadata)]),
+                        contextlib.redirect_stdout(io.StringIO()),
+                    ):
+                        session.add(target, scanner, ["scanner"])
+                    self.assertFalse(session.failed)
+                    expected = "sha256:" + hashlib.sha256(content + context).hexdigest()
+                    self.assertEqual(session.reports[0]["rule_identity"], expected)
+                    observed.append(expected)
+                self.assertNotEqual(observed[0], observed[1])
+
     def test_failed_target_remains_failed_after_a_later_clean_target(self) -> None:
         marker = "PRIVATE_SCANNER_OUTPUT"
         with tempfile.TemporaryDirectory() as temporary:
@@ -333,13 +500,63 @@ class ScanSessionTests(unittest.TestCase):
             self.assertEqual(session.reports[0]["target"], "dockerfile-backend")
             self.assertNotIn(marker, output.getvalue())
             self.assertNotIn("findings", output.getvalue())
+            self.assertEqual(
+                json.loads(output.getvalue().splitlines()[0])["stage"], "scanner_execution"
+            )
+
+    def test_native_review_drift_is_distinct_from_successful_vulnerability_scanning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "trivy").write_bytes(b"pinned fixture")
+            advisory_path = root / "advisories.json"
+            advisory_path.write_text(
+                json.dumps({"schema_version": 1, "build_input_identity": "sha256:" + "a" * 64})
+            )
+            session = run.ScanSession(
+                root,
+                {},
+                {"api": {"build_input_identity": "sha256:" + "b" * 64}},
+                [],
+                advisory_path,
+                [],
+                root,
+            )
+            raw = {
+                "SchemaVersion": 2,
+                "Results": [{"Class": "os-pkgs", "Type": "ubuntu", "Target": "fixture"}],
+            }
+            now = datetime.now(UTC)
+            metadata = {
+                "VulnerabilityDB": {
+                    "Version": 2,
+                    "UpdatedAt": now.isoformat(),
+                    "NextUpdate": (now + timedelta(hours=1)).isoformat(),
+                }
+            }
+            output = io.StringIO()
+            with (
+                patch.object(
+                    run, "execute", side_effect=[(0, json.dumps(raw)), (0, json.dumps(metadata))]
+                ),
+                contextlib.redirect_stdout(output),
+            ):
+                session.add("api-vuln", "trivy-vuln", ["scanner"])
+
+            self.assertTrue(session.failed)
+            self.assertEqual(session.reports, [])
+            diagnostic = json.loads(output.getvalue())
+            self.assertEqual(diagnostic["status"], "failed")
+            self.assertEqual(diagnostic["stage"], "native_component_review")
 
     def test_successful_scanner_with_stale_database_has_no_accepted_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "trivy").write_bytes(b"pinned fixture")
             session = run.ScanSession(root, {}, {}, [], None, [], root)
-            raw = {"SchemaVersion": 2, "Results": [{"Vulnerabilities": []}]}
+            raw = {
+                "SchemaVersion": 2,
+                "Results": [{"Class": "os-pkgs", "Type": "ubuntu", "Target": "fixture"}],
+            }
             metadata = {
                 "VulnerabilityDB": {
                     "Version": 2,
@@ -358,7 +575,9 @@ class ScanSessionTests(unittest.TestCase):
 
             self.assertTrue(session.failed)
             self.assertEqual(session.reports, [])
-            self.assertEqual(json.loads(output.getvalue())["status"], "failed")
+            diagnostic = json.loads(output.getvalue())
+            self.assertEqual(diagnostic["status"], "failed")
+            self.assertEqual(diagnostic["stage"], "database_freshness")
 
     def test_public_findings_retain_only_safe_advisory_fields(self) -> None:
         result = check.safe_findings(

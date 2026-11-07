@@ -58,9 +58,9 @@ type API struct {
 type RateLimit struct {
 	Enabled           bool    `json:"enabled" koanf:"enabled" env:"RATE_LIMIT_ENABLED" flag:"rate-limit-enabled"`
 	Store             string  `json:"store" koanf:"store" validate:"eq=memory" env:"RATE_LIMIT_STORE" flag:"rate-limit-store"`
-	RequestsPerSecond float64 `json:"requestsPerSecond" koanf:"requestsPerSecond" validate:"gt=0" env:"RATE_LIMIT_REQUESTS_PER_SECOND" flag:"rate-limit-requests-per-second"`
+	RequestsPerSecond float64 `json:"requestsPerSecond" koanf:"requestsPerSecond" validate:"positive_finite" env:"RATE_LIMIT_REQUESTS_PER_SECOND" flag:"rate-limit-requests-per-second"`
 	Burst             int     `json:"burst" koanf:"burst" validate:"gt=0" env:"RATE_LIMIT_BURST" flag:"rate-limit-burst"`
-	IdleSeconds       int     `json:"idleSeconds" koanf:"idleSeconds" validate:"gt=0" env:"RATE_LIMIT_IDLE_SECONDS" flag:"rate-limit-idle-seconds"`
+	IdleSeconds       int     `json:"idleSeconds" koanf:"idleSeconds" validate:"positive_seconds" env:"RATE_LIMIT_IDLE_SECONDS" flag:"rate-limit-idle-seconds"`
 }
 
 type ClientIP struct {
@@ -85,14 +85,14 @@ type Queue struct {
 type Limits struct {
 	AudioBytes     int64 `json:"audioBytes" koanf:"audioBytes" validate:"gt=0" env:"AUDIO_BYTES" flag:"audio-bytes"`
 	PromptBytes    int   `json:"promptBytes" koanf:"promptBytes" validate:"gt=0" env:"PROMPT_BYTES" flag:"prompt-bytes"`
-	DecodedSeconds int   `json:"decodedSeconds" koanf:"decodedSeconds" validate:"gt=0" env:"DECODED_SECONDS" flag:"decoded-seconds"`
+	DecodedSeconds int   `json:"decodedSeconds" koanf:"decodedSeconds" validate:"positive_seconds" env:"DECODED_SECONDS" flag:"decoded-seconds"`
 }
 
 type Timeouts struct {
-	OperationSeconds    int `json:"operationSeconds" koanf:"operationSeconds" validate:"gt=0" env:"OPERATION_SECONDS" flag:"operation-seconds"`
-	CleanupSeconds      int `json:"cleanupSeconds" koanf:"cleanupSeconds" validate:"gt=0" env:"CLEANUP_SECONDS" flag:"cleanup-seconds"`
-	ShutdownSeconds     int `json:"shutdownSeconds" koanf:"shutdownSeconds" validate:"gt=0" env:"SHUTDOWN_SECONDS" flag:"shutdown-seconds"`
-	ProvisioningSeconds int `json:"provisioningSeconds" koanf:"provisioningSeconds" validate:"gt=0" env:"PROVISIONING_SECONDS" flag:"provisioning-seconds"`
+	OperationSeconds    int `json:"operationSeconds" koanf:"operationSeconds" validate:"positive_seconds" env:"OPERATION_SECONDS" flag:"operation-seconds"`
+	CleanupSeconds      int `json:"cleanupSeconds" koanf:"cleanupSeconds" validate:"positive_seconds" env:"CLEANUP_SECONDS" flag:"cleanup-seconds"`
+	ShutdownSeconds     int `json:"shutdownSeconds" koanf:"shutdownSeconds" validate:"positive_seconds" env:"SHUTDOWN_SECONDS" flag:"shutdown-seconds"`
+	ProvisioningSeconds int `json:"provisioningSeconds" koanf:"provisioningSeconds" validate:"positive_seconds" env:"PROVISIONING_SECONDS" flag:"provisioning-seconds"`
 }
 
 type Downloads struct {
@@ -103,7 +103,12 @@ type Logging struct {
 	Level string `json:"level" koanf:"level" validate:"oneof=debug info warn error" env:"LOG_LEVEL" flag:"log-level"`
 }
 
-var fields = validator.New(validator.WithRequiredStructEnabled())
+var fields = func() *validator.Validate {
+	v := validator.New(validator.WithRequiredStructEnabled())
+	v.RegisterAlias("positive_seconds", "gt=0,lte="+strconv.FormatInt(maxSeconds, 10))
+	v.RegisterAlias("positive_finite", "gt=0,lte="+strconv.FormatFloat(math.MaxFloat64, 'g', -1, 64))
+	return v
+}()
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 const (
@@ -119,8 +124,8 @@ func (c Settings) Validate() error {
 	if err := fields.Struct(c); err != nil {
 		return ErrInvalid
 	}
-	if err := c.API.RateLimit.Validate(); err != nil {
-		return err
+	if c.API.RateLimit.refillExceedsIdleWindow() {
+		return ErrInvalid
 	}
 	if err := c.API.ClientIP.Validate(); err != nil {
 		return err
@@ -169,14 +174,14 @@ func (m Models) validateReferences(served, downloads bool) error {
 }
 
 func (r RateLimit) Validate() error {
-	if fields.Struct(r) != nil ||
-		int64(r.IdleSeconds) > maxSeconds ||
-		math.IsNaN(r.RequestsPerSecond) ||
-		math.IsInf(r.RequestsPerSecond, 0) ||
-		float64(r.IdleSeconds) < float64(r.Burst)/r.RequestsPerSecond {
+	if fields.Struct(r) != nil || r.refillExceedsIdleWindow() {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func (r RateLimit) refillExceedsIdleWindow() bool {
+	return float64(r.IdleSeconds) < float64(r.Burst)/r.RequestsPerSecond
 }
 
 func validHost(value string) bool {

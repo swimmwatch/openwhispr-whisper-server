@@ -5,28 +5,42 @@ Requirements: REQ-001, REQ-002, REQ-004, REQ-005, REQ-006, REQ-007, REQ-011, REQ
 
 ## Reviewed inputs
 
-- source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
-- specification_version: `6f76eff8ed1b97caa18bcbbaf6da09961f4b4ffafe5736c4a2688106f843d939`
-- review_ref: `a2b606b5-12d9-4c9e-a805-86f889709220`
+- source_version: `a3ec7bf82dcab75c5f621a68f7a4ffc12839d9f5314672105612f478f9526f90`
+- specification_version: `e11e46218c26b12b4cab004ab4506bfa2fcedca731c539ea2dda5efbfab83f31`
+- review_ref: `9e3266d9-5c85-4cd1-a107-17b12542120f`
 
-Status: in progress; the selected server-only stage passed again on published
-rc.5 (2026-10-27). The user explicitly excluded Desktop/Electron execution.
-Fresh exact-candidate GHCR baseline/public/bounds/queue/cancellation/deadline/
-lifecycle/shutdown/observer/no-GPU, SDK JSON/text HTTP and resident/CUDA workloads
-passed, plus Docker Hub public/lifecycle recipes. The two 60-request series had
-no errors; source/configuration/container binding proves new rc.5 was used.
-See the [rc.5 report](<../../../verification/release-rc5.md>). Earlier
-[rc.3 evidence](<../../../verification/docker-rc3-http.md>) remains historical,
-not a substitute for the new candidate checks.
-The new published-target wiring preserves strict local-only guards and records
-actual candidate/configuration/container identities. Baseline, 51 public request
-cases, bounds/isolation, FIFO/cancel/deadlines, recovery/shutdown, SDK HTTP and
-resident/CUDA/model-I/O observation slices passed. This is not a complete P07 pass.
-The full packet remains unchecked: required cache/idle/envelope/sensitivity and
-comparison coverage is outstanding, and Desktop interoperability is not claimed.
-No P08, stable or cluster execution follows. The earlier
-[rc.2 failures](<../../../verification/docker-rtx5070ti-rc2.md>) remain historical;
-rc.3's tag/source/artifact bytes were not altered by these checks.
+Status: **complete with explicitly accepted limitations — 2026-10-28**.
+
+The user requested closure and explicitly selected
+`ask_user_question:p07_close_with_known_limitations` → “Закрыть с этими ограничениями”.
+This closes the packet, not every individual check or unconditional release
+qualification. The actual accepted exceptions are:
+
+1. **Memory stability is not qualified.** Native RSS/Anonymous convergence failed
+   after120 successful conditioning requests; measured60 and calibrated terminal
+   memory were not reached. Small resident-memory growth is accepted for P07
+   closure, not mislabeled a proven leak or a passed retention check.
+2. **Native speech/performance remains limited.** Some direct native HTTP200
+   responses failed the recognizability control; the final uninstrumented timing
+   comparison therefore did not complete. This is accepted for packet closure,
+   not reported as a successful speech control or complete benchmark.
+
+Actual Docker functionality, public formats/bounds/isolation, queue/cancellation,
+CUDA/model identity, restart/shutdown, all8 lifecycle and12 cache/model cases,
+privacy/sensitivity controls and the20-case genuine SDK matrix passed. Current
+acceptance CPU/vet and full race820.405s passed. Full results, failed runs and
+missing evidence remain in the [final server report](<../../../verification/docker-rc5-p07-server.md>).
+
+Further memory research and debugger/all-stop work are excluded by the user's
+choice; no GDB attach or debug-symbol acquisition occurred. Desktop/Electron is
+excluded by the Approved REQ-012 amendment, not passed. Approved/reviewed inputs
+and the exact v3 technical agreement are unchanged; no assertion is weakened in
+code to manufacture a PASS. Candidate state remains
+`candidate_published_unqualified`. P08, stable qualification, publication,
+commit/push, cluster actions and native/image changes are not authorized.
+
+The execution procedure and earlier evidence below are retained as history and
+reproducibility references, not instructions to continue this closed invocation.
 
 Prerequisites: P05 and R01 passed their own checks; exact public candidate inventory/pulled image digests are fixed. The current machine actually has the named GPU, compatible driver/Docker NVIDIA integration and sufficient VRAM for chosen models. These are unverified runtime prerequisites, not inferred from a build or previous GPU listing. Read quality/scenarios.yaml environments/observation and all scenarios referencing P07; core/contracts.yaml runtime/private_backend/configuration.settings/delivery; contracts/openapi.yaml operations/errors. Requirement evidence: spec.md:35, :214, :236 and REQ-027/028.
 
@@ -40,7 +54,7 @@ Override local image names with R01's pulled immutable API/backend digests; do n
 
 Use pinned public audio with recorded license/source/SHA256, derive all advertised formats including OGG/WebM Opus and moov-at-end MP4. Default multilingual base and a second compatible model (for example tiny from a separately pinned catalog entry) are tested through configuration/restart, never request switching. Both must fit this GPU. Include invalid artifact/init/GPU failure, actual fixed-model CUDA activity, idle retention, normal no-reload and model-context release after stop.
 
-Create an actual client interoperability check against the public endpoint, using a pinned OpenAI-compatible client and OpenWhispr's real supported transport. Record client versions/request settings and result; a handwritten compatible HTTP request alone does not establish OpenWhispr interoperability. Runnable client/transport is a prerequisite; unavailable or incompatible client remains unverified and returns the affected integration to planning, without changing the native server.
+Exercise the existing genuine OpenAI Python SDK 2.11.0 codec matrix against the public endpoint in JSON and text, recording client versions, request settings and outcomes under the amended REQ-012. A handwritten compatible HTTP request alone is not SDK evidence. Desktop/Electron application execution is cancelled as a V1 qualification gate, not passed; actual OpenWhispr application interoperability remains unverified and must not be inferred from HTTP/SDK success. Required unavailable SDK prerequisites leave the affected check incomplete without changing the native server.
 
 ### Compose example acceptance
 
@@ -95,13 +109,21 @@ Record exact successful/failed/unrun checks, environment/artifact identities and
 
 ## Technical proposal
 
-Extend a reusable Go acceptance harness under tests/acceptance, with isolated Docker target setup and sanitized outcome reports under docs/verification. Bind ../quality/scenarios.yaml docker_gpu, observation and all Q-CACHE/STARTUP/INPUT/BOUNDS/FIFO/CANCEL/ISOLATION/HEALTH/FAILURE/PRIVACY/RESIDENT/PACKAGING/ROLLOUT/PERFORMANCE/DISTRIBUTION/RELEASEGATE scenarios; ../core/contracts.yaml runtime/models/private_backend/configuration/delivery and public OpenAPI. Use existing integration checks rather than copy them.
+Extend the existing reusable Go acceptance harness under tests/acceptance, with isolated Docker target setup and sanitized outcome reports under docs/verification. Bind ../quality/scenarios.yaml docker_gpu, observation and all Q-CACHE/STARTUP/INPUT/BOUNDS/FIFO/CANCEL/ISOLATION/HEALTH/FAILURE/PRIVACY/RESIDENT/PACKAGING/ROLLOUT/PERFORMANCE/DISTRIBUTION/RELEASEGATE scenarios; ../core/contracts.yaml runtime/models/private_backend/configuration/delivery and public OpenAPI. Use existing integration checks rather than copy them.
+
+For P07 only, bind the Approved specification to source_version a3ec7bf82dcab75c5f621a68f7a4ffc12839d9f5314672105612f478f9526f90, specification_version e11e46218c26b12b4cab004ab4506bfa2fcedca731c539ea2dda5efbfab83f31 and review 9e3266d9-5c85-4cd1-a107-17b12542120f. These current pins supersede the historical pins in plan.md#shared-technical-commitments for this packet only; retain its language, dependency, ownership, test-first and external-authority constraints. Other packets and their managed agreements are not revised or executed here.
 
 Test only R01's anonymously pulled immutable API/backend candidate manifests on the actual RTX 5070 Ti Laptop target, using P05's one canonical Compose stack. Record actual GPU/driver/VRAM/OS/Engine/Compose/runtime/tool/model/source/image identities and effective limits/rate settings. Do not replace published images with a local rebuild or infer CUDA from enumeration/health alone. Positive native CUDA/model-buffer facts, correlated actual GPU inference and public transcription are required.
 
-Use pinned licensed public audio and derive all advertised formats, including Opus and moov-at-end MP4. Test the default model plus a separately pinned fitting model through config/restart only. Exercise actual OpenAI-compatible client and OpenWhispr supported transport with recorded versions; handwritten HTTP alone is insufficient. Required unavailable client/hardware/driver/observation prerequisites remain incomplete, not waived.
+Use pinned licensed public audio and derive all advertised formats, including Opus and moov-at-end MP4. Test the default model plus a separately pinned fitting model through config/restart only. Under the approved REQ-012 amendment, exercise the genuine pinned OpenAI Python SDK 2.11.0 across the existing ten encoded fixtures in JSON and text through the public HTTP API and actual resident CUDA backend. Reuse runClientCases, clientCodecFixtures, runClientCaseCommand and openai_client.py; remove Desktop/Electron execution from the required client path, without substituting a handwritten HTTP client or claiming actual OpenWhispr application interoperability. Application execution is cancelled as a V1 qualification gate, not passed. For P07, the historical Q-INPUT client wording is interpreted by this current REQ-012 contract; memory, privacy, isolation, lifecycle and both required GPU environments remain mandatory. Missing required SDK/hardware/driver/observation prerequisites remain incomplete, not waived.
 
-Observe child/group/model-init identity, model-file open/read/mapping, safe resource/fd/file counts, RSS/VRAM and output marker traps, without content logging or production debug endpoints. Calibrate idle/longest-input envelope, then the contracted three blocks of 20 successful requests and failure/cancellation sequences; at least 30 steady requests and declared concurrent sample report startup/load separately from median/p95/public/backend/queue timings and processing/audio ratio. Do not invent a numeric performance SLO or require zero driver baseline memory. Bounded latest native result/allocator retention is documented, not treated as per-request accumulation.
+Observe child/group/model-init identity, model-file open/read/mapping, safe resource/fd/file counts, RSS/VRAM and output marker traps, without content logging or production debug endpoints. Reuse runResidentMeasurements, calibrateResidentEnvelope, runResidentConditioning, freezeConditionedResidentEnvelope and runResidentTerminalMeasurements. Keep calibration and measured evidence separate; measured or failed-population peaks cannot refit earlier bounds. The six-block/120-inference-request conditioning cap and configured time budgets are unchanged. Measured work still includes three blocks of 20 successful requests, idle retention and all terminal failure/cancellation sequences. An unestablished envelope or missing live-allocation evidence stays incomplete; earlier failed runs remain failed.
+
+For the pure-Go API, replace the v2 absolute completed-RSS rejection threshold with an independently frozen natural-GC marked-live interval plus the existing measured-block RSS accumulation check. Precise PID1 smaps_rollup RSS, peaks and trends remain mandatory reported observations, never inferred live objects; do not add fitted RSS padding or a numeric service memory/performance SLO. Keep API FD/transient/deleted-open ownership checks unchanged. The backend/native physical/model-size caps, model-file/init continuity, native RSS and VRAM guards remain unchanged. Missing API GC evidence is unknown/failure, not a reason to bypass the old cap and claim PASS.
+
+Generalize the existing private supervisor Go-heap policy/collector only for the demonstrated API/supervisor variation: bind each role to its actual container/image/start identity and the same actual paired native generation/model. No invented backend identity for API evidence, no generic service dependency, no new runtime endpoint, no candidate rebuild or native-source change. Reuse the pinned Go 1.27.3 numeric GC parser and retained-live-copy controls. Freeze each role's marked-live interval only from premeasurement originals after the existing completion barrier and three comparable natural collections. Require fresh comparable collections after each measured success/terminal phase; stale, changed-process, forced, missing or growing intervals fail. Whole-MiB quantization and inability to prove every sub-resolution copy must be explicit in the report; use retained complete request/model-copy controls to establish discrimination.
+
+When natural API cycles are insufficient, the collector may issue a separately declared, sequential, bounded public-health GET workload (at most 4096 calls per observation phase) to obtain ordinary collections, under the caller's unchanged configured deadline. Use the same health observation procedure for calibration and measured phases; record every count/error, ensure no transcription/model load, preserve process identities and include its RSS cost. This does not add inference requests to the 120-request budget, extend a deadline, force collection, tune GOGC/GOMEMLIMIT or reset a failed bound. Insufficient cycles leave the phase incomplete. At least 30 steady requests and a declared concurrent sample report startup/load separately from median/p95/public/backend/queue timings and processing/audio ratio. Bounded latest native result/allocator retention is documented, not treated as per-request accumulation.
 
 Run all Compose recipes: downloaded cache, zero-source-access offline restart, read-only prepared file, missing-file failure, unchanged restart, changed-config pair recreation and ordinary down/up without volume deletion. Prove native stop/reap, truthful readiness, no old/new GPU overlap and cache retention. FIFO/resource workloads explicitly override rate settings so they reach queue paths; dedicated limiter checks remain separate.
 
@@ -109,13 +131,15 @@ Test harness assertions before trusting evidence and apply required reversible P
 
 ## Technical agreement
 
-Selected proposal: `p07-docker-gpu-evidence-v1`. Packet: `P07`.
+Selected proposal: `p07-go-heap-memory-evidence-v3`. Packet: `P07`.
 
-- proposal_digest: `a91beca407917e6c1206f99d93223f0d72452634c9da1fe53f0efeb0a418b31e`
-- agreement_ref: `{id: be6db71a-6ebf-4f95-bca4-b81f2da2171a, revision: 4}`
+- proposal_digest: `79c2462ceae175fef4a48fcd0409f60123ce46f46178484940ca5ecc3b5cecc4`
+- agreement_ref: `{id: 37645c04-f075-435c-8dc1-f9d334646ff8, revision: 4}`
 - sources: this packet's `Technical proposal` and `plan.md#shared-technical-commitments`.
-- provenance: actual synchronous Request User Input acceptance preserved in the managed record; revision 4 corrects only the evidence name Configure to Install and preserves that original answer, not a fresh reply.
-- planning_packet_check: `ready`, no issues (2026-10-22); rechecked after repair. Technical readiness does not satisfy dependencies or authorize implementation/external actions.
+- provenance: actual synchronous `ask_user_question:p07_v3_memory_method` answer on 2026-10-28, preserved by the managed planning record. The user accepted the disclosed API live-heap/RSS-trend method after the precise-RSS v2 failure; no retroactive PASS is granted. Only P07 was selected; P08/P09 agreements and history were not rewritten.
+- prior amended agreement (historical): `37645c04-f075-435c-8dc1-f9d334646ff8@2`, proposal `p07-http-sdk-gpu-evidence-v2`, digest `3597517c9999f14a1acb43062cc233f62d065ad2d3b6917ad2df6a0eb9d6b7ce`; all v2 memory failures remain failed.
+- planning_packet_check: `ready`, no issues (2026-10-28), bound to the exact current Approved/reviewed specification above. The user separately authorized this P07 continuation; no commit, push, publication, P08 or cluster action follows.
+- previous P07 agreement (historical): `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4`, proposal `p07-docker-gpu-evidence-v1`; not the execution binding for the amended client criterion.
 
 Recheck the exact reference/digest and pinned specification before and after execution. Keep metadata/progress outside the frozen sections.
 

@@ -42,6 +42,7 @@ type cacheModelSource struct {
 	requests    atomic.Int64
 	tlsAttempts atomic.Int64
 	deny        atomic.Bool
+	fault       atomic.Int32 // 1: truncated transfer; 2: checksum corruption
 }
 
 func (s *cacheModelSource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +68,20 @@ func (s *cacheModelSource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(s.source.ExpectedBytes, 10))
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = io.CopyN(w, file, s.source.ExpectedBytes)
+	switch s.fault.Load() {
+	case 1:
+		_, _ = io.CopyN(w, file, s.source.ExpectedBytes/2)
+	case 2:
+		var first [1]byte
+		if _, err := io.ReadFull(file, first[:]); err != nil {
+			return
+		}
+		first[0] ^= 0xff
+		_, _ = w.Write(first[:])
+		_, _ = io.CopyN(w, file, s.source.ExpectedBytes-1)
+	default:
+		_, _ = io.CopyN(w, file, s.source.ExpectedBytes)
+	}
 }
 
 func TestCacheSourceFixtureCountsActualProvisioningAndOfflineDenial(t *testing.T) {
@@ -119,11 +133,51 @@ func TestCacheSourceFixtureCountsActualProvisioningAndOfflineDenial(t *testing.T
 	}
 }
 
+func TestCacheSourceFaultsCannotPublishAndCorrectedRetryRecovers(t *testing.T) {
+	data := binary.LittleEndian.AppendUint32(nil, 0x67676d6c)
+	for _, value := range []uint32{51865, 1500, 512, 8, 6, 448, 512, 8, 6, 80, 1} {
+		data = binary.LittleEndian.AppendUint32(data, value)
+	}
+	sum := sha256.Sum256(data)
+	for _, mode := range []int32{1, 2} {
+		t.Run(strconv.Itoa(int(mode)), func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "model.bin")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			model := config.Model{ID: "base", Source: config.Source{Kind: "download", SHA256: hex.EncodeToString(sum[:]), ExpectedBytes: int64(len(data))}}
+			fixture := &cacheModelSource{file: path, source: model.Source}
+			fixture.fault.Store(mode)
+			server := httptest.NewTLSServer(fixture)
+			defer server.Close()
+			model.Source.URL = server.URL + "/base.bin"
+			opts := models.Options{Models: config.Models{Catalog: []config.Model{model}, Served: model.ID, DownloadSet: []string{model.ID}}, CacheDir: filepath.Join(root, "cache"), Attempts: 1, Timeout: time.Second}
+			if _, err := models.Provision(t.Context(), opts, server.Client()); err == nil {
+				t.Fatal("faulted source was accepted as a reusable model artifact")
+			}
+			entries, err := os.ReadDir(filepath.Join(opts.CacheDir, "artifacts"))
+			if err != nil || len(entries) != 0 {
+				t.Fatal("failed transfer published an artifact or left partial model bytes")
+			}
+			fixture.fault.Store(0)
+			artifact, err := models.Provision(t.Context(), opts, server.Client())
+			if err != nil || artifact.SHA256 != model.Source.SHA256 || fixture.requests.Load() != 2 {
+				t.Fatal("corrected source retry did not recover the verified artifact")
+			}
+		})
+	}
+}
+
 // cacheLocalSource uses an explicitly selected bridge address. Its public CA is
 // mounted only in the owned prepared directory; the private key stays in memory.
 func cacheLocalSource(t *testing.T, e *acceptanceEnvironment, base config.Model) (*cacheModelSource, string) {
 	t.Helper()
-	ip := net.ParseIP(os.Getenv("P07_LOCAL_SOURCE_BIND_IP"))
+	bindVariable := "P07_LOCAL_SOURCE_BIND_IP"
+	if e.selection.Scope == publishedAcceptanceScope {
+		bindVariable = "P07_MODEL_SOURCE_BIND_IP"
+	}
+	ip := net.ParseIP(os.Getenv(bindVariable))
 	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
 		t.Fatal("an explicit verified Docker-bridge model source IP is required")
 	}
@@ -291,6 +345,11 @@ func readyCacheModel(t *testing.T, e *acceptanceEnvironment, expected string) st
 	reply, err := e.client.Transcribe(e.ctx, e.audio, "jfk.wav", []FormField{{"model", expected}, {"language", "en"}, {"temperature", "0"}})
 	if err != nil || reply.Status != http.StatusOK || strings.TrimSpace(reply.Text) == "" {
 		t.Fatal("the configured fixed model did not transcribe the public fixture")
+	}
+	if e.selection.Scope == publishedAcceptanceScope {
+		if err := recordPublishedBinding(e.ctx, e); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return health.ProcessGeneration
 }
@@ -478,7 +537,7 @@ func diagnoseCacheStartup(t *testing.T, e *acceptanceEnvironment, initialStatus 
 		return
 	}
 	t.Logf("model-startup failure facts: %s", data)
-	dir := filepath.Join(e.root, ".local", "p07", "cache")
+	dir := filepath.Join(e.root, ".local", "p07", "final-cache")
 	phase := "provision"
 	if nativeMustStart {
 		phase = "native"
@@ -527,6 +586,11 @@ func unavailableCacheModel(t *testing.T, e *acceptanceEnvironment, nativeMustSta
 				diagnoseCacheStartup(t, e, 0, nativeMustStart)
 				t.Fatal("startup failure did not occur at the expected provisioning/native boundary")
 			}
+			if e.selection.Scope == publishedAcceptanceScope {
+				if err := recordPublishedStartupBinding(ctx, e); err != nil {
+					t.Fatal(err)
+				}
+			}
 			apiState, err := e.target.Inspect(ctx, "api")
 			if err != nil {
 				t.Fatal("API startup failure state could not be observed")
@@ -549,19 +613,33 @@ type cacheLocalCheck struct {
 }
 
 func TestLocalCacheAndModels(t *testing.T) {
-	e := openLocalEnvironment(t, nil)
+	runCacheAndModels(t, openLocalEnvironment(t, nil))
+}
+
+func runCacheAndModels(t *testing.T, e *acceptanceEnvironment) {
+	t.Helper()
 	originalSettings, originalImage := e.settings, e.target.opts.BackendImage
 	base := originalSettings.Models.Catalog[0]
-	caImage := os.Getenv("P07_LOCAL_CA_BACKEND_IMAGE")
-	if caImage == "" {
-		t.Fatal("the explicitly verified local source-CA derivative image is required")
-	}
-	caOptions := e.target.opts
-	caOptions.BackendImage = caImage
-	if _, err := NewLocalDockerTarget(caOptions); err != nil {
-		t.Fatal("source-CA image must be an explicit immutable local backend reference")
+	caImage := originalImage
+	published := e.selection.Scope == publishedAcceptanceScope
+	if !published {
+		caImage = os.Getenv("P07_LOCAL_CA_BACKEND_IMAGE")
+		if caImage == "" {
+			t.Fatal("the explicitly verified local source-CA derivative image is required")
+		}
+		caOptions := e.target.opts
+		caOptions.BackendImage = caImage
+		if _, err := NewLocalDockerTarget(caOptions); err != nil {
+			t.Fatal("source-CA image must be an explicit immutable local backend reference")
+		}
 	}
 	source, sourceURL := cacheLocalSource(t, e, base)
+	var sourceCASHA, sourceCAFile string
+	if published {
+		if err := e.target.setModelSourceTrust(true); err != nil {
+			t.Fatal(err)
+		}
+	}
 	trap := config.Model{ID: "unselected-download", Source: config.Source{Kind: "download", URL: sourceURL, SHA256: base.Source.SHA256, ExpectedBytes: base.Source.ExpectedBytes}}
 	prepared := originalSettings
 	prepared.Models.Catalog = []config.Model{base, trap}
@@ -570,13 +648,15 @@ func TestLocalCacheAndModels(t *testing.T) {
 	modified, cachePopulated := false, false
 	t.Cleanup(func() {
 		data, err := json.MarshalIndent(struct {
-			Scope                string            `json:"scope"`
-			RuntimeInputIdentity string            `json:"runtime_input_identity"`
-			SourceCABackendImage string            `json:"source_ca_backend_image"`
-			OriginalBackendImage string            `json:"original_backend_image"`
-			Checks               []cacheLocalCheck `json:"observed_checks"`
-		}{"local_validation_not_release", e.selection.RuntimeInputIdentity, caImage, originalImage, checks}, "", "  ")
-		dir := filepath.Join(e.root, ".local", "p07", "cache")
+			Scope                     string            `json:"scope"`
+			RuntimeInputIdentity      string            `json:"runtime_input_identity"`
+			SourceFixtureBackendImage string            `json:"source_fixture_backend_image"`
+			OriginalBackendImage      string            `json:"original_backend_image"`
+			SourceCASHA256            string            `json:"fixture_ca_sha256,omitempty"`
+			EffectiveSSL_CERT_FILE    string            `json:"fixture_ssl_cert_file,omitempty"`
+			Checks                    []cacheLocalCheck `json:"observed_checks"`
+		}{e.selection.Scope, e.selection.RuntimeInputIdentity, caImage, originalImage, sourceCASHA, sourceCAFile, checks}, "", "  ")
+		dir := filepath.Join(e.root, ".local", "p07", "final-cache")
 		if err != nil || os.MkdirAll(dir, 0700) != nil || os.WriteFile(filepath.Join(dir, "cache-models-"+filepath.Base(e.workdir)+".json"), data, 0600) != nil {
 			t.Error("cannot retain safe owned cache/model observations")
 		}
@@ -593,7 +673,13 @@ func TestLocalCacheAndModels(t *testing.T) {
 		e.ctx = cleanup
 		defer func() { e.ctx = previousContext }()
 		e.target.opts.BackendImage = originalImage
-		writeAndRecreate(t, e, originalSettings)
+		if published {
+			if err := e.target.setModelSourceTrust(false); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+		cacheChangeAndRetire(t, e, originalSettings)
 		readyCacheModel(t, e, base.ID)
 		if cachePopulated {
 			cachedLocalSHA(t, e, base.Source)
@@ -602,7 +688,7 @@ func TestLocalCacheAndModels(t *testing.T) {
 	change := func(t *testing.T, settings config.Settings) {
 		t.Helper()
 		modified = true
-		writeAndRecreate(t, e, settings)
+		cacheChangeAndRetire(t, e, settings)
 	}
 	observe := func(name, model string, before cacheSourceCounters, checksum string) {
 		checks = append(checks, cacheLocalCheck{Name: name, Model: model, Before: before, After: cacheCounters(source), CacheSHA256: checksum})
@@ -614,7 +700,11 @@ func TestLocalCacheAndModels(t *testing.T) {
 		readyCacheModel(t, e, base.ID)
 		state, err := e.target.Inspect(e.ctx, "backend")
 		if err != nil || state.Reference != caImage {
-			t.Fatal("the selected task-only source-CA image was not used")
+			t.Fatal("the selected immutable backend image was not used")
+		}
+		if published {
+			sourceCASHA = cacheRuntimeSourceTrust(t, e)
+			sourceCAFile = "/prepared/p07-source-ca.pem"
 		}
 		requireCacheSourceQuiet(t, source, before)
 		observe("prepared_no_source", base.ID, before, "")
@@ -652,6 +742,33 @@ func TestLocalCacheAndModels(t *testing.T) {
 	}) {
 		return
 	}
+	if !t.Run("download_cache_down_up_retention", func(t *testing.T) {
+		before := cacheCounters(source)
+		snapshot := readyLifecycleSnapshot(t, e)
+		start, err := lifecyclePIDStart(*snapshot.NativeHostPID)
+		if err != nil {
+			t.Fatal("cannot identify old native before cache-preserving down")
+		}
+		if err := e.target.Down(e.ctx); err != nil {
+			t.Fatal(err)
+		}
+		lifecycleOldProcessGone(t, e, *snapshot.NativeHostPID, start)
+		samples := lifecycleOldGPUAllocationGone(t, e, *snapshot.NativeHostPID, start)
+		if err := e.target.Up(e.ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := refreshLifecycleClient(e.ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		if readyCacheModel(t, e, base.ID) == snapshot.PrivateHealth.ProcessGeneration {
+			t.Fatal("down/up retained process-local model context")
+		}
+		requireCacheSourceQuiet(t, source, before)
+		observe("download_cache_down_up_no_source", base.ID, before, cachedLocalSHA(t, e, base.Source))
+		lifecycleReport(t, e, "cache-down-up", map[string]any{"gpu_release_samples": samples, "source_http_attempts": cacheCounters(source).HTTP - before.HTTP, "source_tls_attempts": cacheCounters(source).TLS - before.TLS}, nil)
+	}) {
+		return
+	}
 	if !t.Run("prepared_with_deny_trap", func(t *testing.T) {
 		e.target.opts.BackendImage = originalImage
 		before := cacheCounters(source)
@@ -659,6 +776,58 @@ func TestLocalCacheAndModels(t *testing.T) {
 		readyCacheModel(t, e, base.ID)
 		requireCacheSourceQuiet(t, source, before)
 		observe("prepared_deny_no_source", base.ID, before, cachedLocalSHA(t, e, base.Source))
+	}) {
+		return
+	}
+	for _, mode := range []int32{1, 2} {
+		if !t.Run("failed_download_and_corrected_retry_"+strconv.Itoa(int(mode)), func(t *testing.T) {
+			e.target.opts.BackendImage = caImage
+			settings := download
+			settings.Storage.CacheDir = filepath.Join(originalSettings.Storage.CacheDir, "p07-fault-"+strconv.Itoa(int(mode)))
+			settings.Downloads.Attempts = 1
+			source.deny.Store(false)
+			source.fault.Store(mode)
+			before := cacheCounters(source)
+			change(t, settings)
+			unavailableCacheModel(t, e, false)
+			if source.requests.Load()-before.HTTP != 1 || source.tlsAttempts.Load() <= before.TLS {
+				t.Fatal("failed download did not reach exactly one counted HTTPS source request")
+			}
+			observe("failed_download_"+strconv.Itoa(int(mode)), base.ID, before, "")
+			source.fault.Store(0)
+			before = cacheCounters(source)
+			change(t, settings)
+			readyCacheModel(t, e, base.ID)
+			if source.requests.Load()-before.HTTP != 1 {
+				t.Fatal("corrected transfer did not make one fresh verified download")
+			}
+			cacheNoPartialArtifacts(t, e)
+			observe("corrected_download_"+strconv.Itoa(int(mode)), base.ID, before, cachedLocalSHA(t, e, base.Source))
+			source.deny.Store(true)
+			before = cacheCounters(source)
+			change(t, prepared)
+			readyCacheModel(t, e, base.ID)
+			requireCacheSourceQuiet(t, source, before)
+			cachedLocalSHA(t, e, base.Source)
+		}) {
+			return
+		}
+	}
+	if !t.Run("corrupt_prepared_does_not_fallback", func(t *testing.T) {
+		e.target.opts.BackendImage = originalImage
+		path := filepath.Join(e.prepared, "corrupt-prepared.bin")
+		if os.WriteFile(path, []byte("not the pinned model artifact"), 0644) != nil || os.Chmod(path, 0644) != nil {
+			t.Fatal("cannot write owned corrupt prepared model")
+		}
+		corrupt := base
+		corrupt.Source.Path = "/prepared/corrupt-prepared.bin"
+		settings := prepared
+		settings.Models.Catalog = []config.Model{corrupt, trap}
+		before := cacheCounters(source)
+		change(t, settings)
+		unavailableCacheModel(t, e, false)
+		requireCacheSourceQuiet(t, source, before)
+		observe("corrupt_prepared_unavailable", base.ID, before, "")
 	}) {
 		return
 	}
@@ -724,8 +893,8 @@ func TestLocalCacheAndModels(t *testing.T) {
 			PreparedBytes         int    `json:"prepared_bytes"`
 			GoMetadataAccepted    bool   `json:"go_metadata_accepted"`
 			ExpectedNativeFailure string `json:"expected_native_failure"`
-		}{"local_validation_not_release", "6ac14546046ffb17d144a08bcad65337e535cf5f", cacheUnsupportedNativeFType, invalid.Source.SHA256, len(prefix), true, "unsupported_ftype_assert"})
-		dir := filepath.Join(e.root, ".local", "p07", "cache")
+		}{e.selection.Scope, "6ac14546046ffb17d144a08bcad65337e535cf5", cacheUnsupportedNativeFType, invalid.Source.SHA256, len(prefix), true, "unsupported_ftype_assert"})
+		dir := filepath.Join(e.root, ".local", "p07", "final-cache")
 		if err != nil || os.MkdirAll(dir, 0700) != nil || os.WriteFile(filepath.Join(dir, "native-fixture-"+filepath.Base(e.workdir)+".json"), fixtureFacts, 0600) != nil {
 			t.Fatal("cannot retain safe native-failure fixture facts")
 		}
@@ -741,6 +910,11 @@ func TestLocalCacheAndModels(t *testing.T) {
 	}
 	if !t.Run("restore_base_preserves_prior_cache", func(t *testing.T) {
 		before := cacheCounters(source)
+		if published {
+			if err := e.target.setModelSourceTrust(false); err != nil {
+				t.Fatal(err)
+			}
+		}
 		change(t, originalSettings)
 		readyCacheModel(t, e, base.ID)
 		requireCacheSourceQuiet(t, source, before)

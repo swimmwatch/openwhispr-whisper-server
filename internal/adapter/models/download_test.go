@@ -101,6 +101,40 @@ func TestDownloadFailures(t *testing.T) {
 	}
 }
 
+func TestDownloadStopsAtExpectedSize(t *testing.T) {
+	data := modelBytes(51865)
+	payload := strings.NewReader(strings.Repeat("x", 64*1024))
+	initialBytes := payload.Len()
+	var closed atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       trackedBody{payload, &closed},
+			Header:     make(http.Header),
+			Request:    r,
+		}, nil
+	})}
+
+	opts := options(t, "https://example.org/PRIVATE", data)
+	opts.Attempts = 1
+	opts.Models.Catalog[0].Source.ExpectedBytes = int64(len(data))
+	_, err := Provision(context.Background(), opts, client)
+	requireFailure(t, err)
+	if !errors.Is(err, errIntegrity) {
+		t.Fatal("oversized stream lost integrity cause", err)
+	}
+	if consumed := initialBytes - payload.Len(); consumed > len(data)+1 {
+		t.Fatalf("read oversized stream beyond expected size and overflow byte: %d", consumed)
+	}
+	if closed.Load() != 1 {
+		t.Fatal("oversized stream body was not closed")
+	}
+	if _, err := os.Stat(cacheFile(opts, checksum(data))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("oversized stream published a cache entry", err)
+	}
+	requireNoPartials(t, opts)
+}
+
 func TestDownloadRetryRecovery(t *testing.T) {
 	data := modelBytes(51865)
 

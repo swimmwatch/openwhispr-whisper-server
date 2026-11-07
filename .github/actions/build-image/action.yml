@@ -13,6 +13,9 @@ inputs:
   cold:
     description: Disable all imported and exported build caches
     default: 'false'
+  cache-access:
+    description: 'Registry layer cache access: none, read or trusted-main write'
+    default: read
 outputs:
   digest:
     description: Verified OCI index digest
@@ -36,21 +39,28 @@ runs:
       keep-state: false
       cleanup: true
 
-  - name: Cache PR image layers
-    if: inputs.cold != 'true'
-    uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
-    with:
-      path: ${{ env.CI_BUILD_CACHE_DIR }}
-      key: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ inputs.role }}-${{
-        hashFiles('containers/*.Dockerfile', 'containers/build-inputs.json', 'go.mod', 'go.sum', 'tools/versions.yaml')
-        }}-${{ inputs.source-sha }}
-      restore-keys: ${{ env.CI_BUILD_CACHE_PREFIX }}-${{ runner.os }}-${{ runner.arch }}-${{ inputs.role
-        }}-
-
-  - name: Prepare image export
-    run: mkdir -p "$RUNNER_TEMP/artifacts/$ROLE"
+  - name: Prepare registry cache policy and image export
+    id: cache
     env:
       ROLE: ${{ inputs.role }}
+      COLD_BUILD: ${{ inputs.cold }}
+      CACHE_ACCESS: ${{ inputs.cache-access }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_REF: ${{ github.ref }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GITHUB_RUN_ID: ${{ github.run_id }}
+      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+    run: |
+      set -euo pipefail
+      mkdir -p "$RUNNER_TEMP/artifacts/$ROLE"
+      if [ "$COLD_BUILD" = true ]; then
+        CACHE_ACCESS=none
+      fi
+      uv run --no-sync --no-dev python tools/build_cache.py prepare \
+        --role "$ROLE" --repository "$CI_BUILD_CACHE_REPOSITORY" \
+        --platform "$CI_IMAGE_PLATFORM" --access "$CACHE_ACCESS" \
+        --output "$RUNNER_TEMP/artifacts/$ROLE/cache.json" --github-output "$GITHUB_OUTPUT"
     shell: bash
 
   - name: Generate OCI labels and registry annotations
@@ -96,10 +106,9 @@ runs:
       attests: type=sbom,generator=${{ env.CI_SBOM_GENERATOR }}
       push: false
       no-cache: ${{ inputs.cold == 'true' }}
-      cache-from: ${{ inputs.cold != 'true' && format('type=local,src={0}', env.CI_BUILD_CACHE_DIR) ||
-        '' }}
-      cache-to: ${{ inputs.cold != 'true' && format('type=local,dest={0},mode=max,compression=zstd,compression-level=3',
-        env.CI_BUILD_CACHE_NEXT_DIR) || '' }}
+      # Only the trusted cache workflow requests writes. Cold builds get neither.
+      cache-from: ${{ steps.cache.outputs.cache-from }}
+      cache-to: ${{ steps.cache.outputs.cache-to }}
 
   - name: Verify and record exported image identities
     env:
@@ -108,16 +117,26 @@ runs:
       SOURCE_SHA: ${{ inputs.source-sha }}
       COLD_BUILD: ${{ inputs.cold }}
     run: |
+      set -euo pipefail
       qualification=()
       if [ "$COLD_BUILD" = true ]; then
         qualification=(--cold)
       fi
-      uv run --no-sync --no-dev python tools/release/artifacts.py record-image --output "$RUNNER_TEMP/artifacts/$ROLE" --source-sha "$SOURCE_SHA" --expected-digest "$IMAGE_DIGEST" "${qualification[@]}"
+      uv run --no-sync --no-dev python tools/release/artifacts.py record-image \
+        --output "$RUNNER_TEMP/artifacts/$ROLE" --source-sha "$SOURCE_SHA" \
+        --expected-digest "$IMAGE_DIGEST" --role "$ROLE" \
+        --cache-record "$RUNNER_TEMP/artifacts/$ROLE/cache.json" "${qualification[@]}"
     shell: bash
 
-  - name: Replace PR cache without accumulating old blobs
-    if: inputs.cold != 'true'
-    run: |
-      rm -rf "$CI_BUILD_CACHE_DIR"
-      mv "$CI_BUILD_CACHE_NEXT_DIR" "$CI_BUILD_CACHE_DIR"
+  - name: Promote verified staging cache and read back its digest
+    if: inputs.cold != 'true' && inputs.cache-access == 'write'
+    env:
+      ROLE: ${{ inputs.role }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_REF: ${{ github.ref }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GITHUB_RUN_ID: ${{ github.run_id }}
+      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+    run: uv run --no-sync --no-dev python tools/build_cache.py promote --record "$RUNNER_TEMP/artifacts/$ROLE/cache.json"
     shell: bash

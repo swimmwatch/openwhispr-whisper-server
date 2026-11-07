@@ -1,6 +1,6 @@
 # GPU Whisper Server — First Release
 
-Status: Approved
+Status: Draft
 
 Depth: Deep
 Active profiles: core, backend, operations, security
@@ -155,7 +155,7 @@ Optional fields are `language` (supported upstream language identifier or `auto`
 
 Inputs include decodable audio in WAV, MP3, MP4, MPEG, MPGA, M4A, OGG, FLAC, and WebM, including WebM/Opus and OGG/Opus. See [official file contract](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create). Content validation/normalization must not rely only on filename/MIME. Unsupported/corrupt/no-audio content returns 400; exceeding the audio payload bound returns 413; duration is checked by bounded decoding. A file at the configured bound must fit multipart framing. Upload/conversion cannot consume unbounded RAM or transient storage before rejection.
 
-Acceptance: intended OpenAI-compatible clients, including OpenWhispr, transcribe all advertised file families through the public API and actual resident CUDA backend. Missing/duplicate fields, a different model, unsupported streaming, invalid values, oversized or overlong/corrupt audio reject without unintended inference or model reload.
+Acceptance: a pinned genuine OpenAI-compatible SDK transcribes all advertised file families through the public HTTP API and actual resident CUDA backend, using the supported JSON and text response modes. V1 qualification requires this server HTTP/SDK contract evidence, not execution of the OpenWhispr desktop application or its Electron transport. Actual application interoperability remains unverified unless separately executed and must not be claimed from protocol or SDK checks alone; its absence is not a V1 pre-release/stable qualification gate. This exclusion does not waive memory, isolation, lifecycle or either required GPU-environment evidence. Missing/duplicate fields, a different model, unsupported streaming, invalid values, oversized or overlong/corrupt audio reject without unintended inference or model reload.
 
 ### REQ-013: Results, errors, private backend, and isolation
 
@@ -243,7 +243,7 @@ Record startup/model-load time, repeated steady-state latency (including median/
 
 Evidence identifies sources/images/chart, model/format, both GPUs/drivers, OS/runtime, Kubernetes/Helm/toolchain versions, inputs/parameters/sample counts, passed/failed/unrun checks, and limitations. Missing access or compatible hardware is unverified, never passed. Rendering, GPU enumeration, source review, and unit tests are not runtime evidence.
 
-Acceptance: both named environments have actual reproducible transcription and lifecycle evidence plus separate performance results. No healthy per-request model reload, accumulating request allocations, false CPU proof, or hidden failed environment is accepted. Approved specification status proves requirements completeness only, not a built/accepted release.
+Acceptance: both named environments have actual reproducible transcription and lifecycle evidence plus separate performance results. No healthy per-request model reload, accumulating request allocations, false CPU proof, or hidden failed environment is accepted. Approved specification status proves requirements completeness only, not a built/accepted release. The release-only exception in REQ-028 does not turn incomplete verification into a pass.
 
 ### REQ-021: V1 exclusions
 
@@ -311,7 +311,7 @@ Untrusted pull requests run without publication credentials, write-capable relea
 
 CD covers artifact publication and GitHub releases. Home Lab installation and both real GPU acceptance suites remain separately authorized/manual execution with recorded evidence under REQ-020. GPU-free CI, static manifests and successful registry upload do not count as GPU acceptance.
 
-Acceptance: a fork PR can run intended non-secret checks but cannot publish or obtain release/cluster credentials; a trusted candidate builds both images and packages the chart with traceable reports. Known Go source security findings and Dockerfile/Helm misconfigurations are detected by the required security analysis and block release under the agreed security gate. An intentionally failed required check prevents release publication/promotion. Required GPU evidence remains independently visible, and no automatic Home Lab deployment is configured.
+Acceptance: a fork PR can run intended non-secret checks but cannot publish or obtain release/cluster credentials; a trusted candidate builds both images and packages the chart with traceable reports. Known Go source security findings and Dockerfile/Helm misconfigurations are detected by the required security analysis and block release under the agreed security gate. An intentionally failed required check prevents release publication/promotion. Required GPU evidence remains independently visible, and no automatic Home Lab deployment is configured. The release-only exception in REQ-028 overrides the blocking consequence only for the security evidence it explicitly lists; an expired, failed or missing check is never represented as passed.
 
 ### REQ-027: Multiple public image and chart channels
 
@@ -332,6 +332,8 @@ Stable publication requires successful, current evidence for the selected candid
 Missing credentials, publication/access failure, failed or missing required CI/GPU evidence and drift keep the candidate or stable release incomplete. Recovery preserves prior stable versions and model cache. Stable aliases and the public latest-release designation are finalized only after required stable-channel read-back succeeds; cross-registry writes are not claimed atomic. Deployment remains manual.
 
 Acceptance: a successful candidate can be installed and transcribe on both GPUs, while an injected build failure, partial publication, stale source or missing GPU report prevents stable completion. Fixes produce a new candidate when artifacts change, with corrected checks/evidence. Stable image digests equal the accepted candidate digests, the stable chart/version checks pass, public documentation is complete and every required stable channel is readable before the release is reported finished.
+
+**Release-only exception for v1.0.0:** The user explicitly accepted and required public disclosure of incomplete P07/P08 GPU evidence, including memory and old/new GPU overlap, unfinished P09 documentation, expired security exceptions and scans, and the absence of the short-audio mitigation from rc.6 (decision `066c9483-50e8-4436-bc05-6ca99936e2d4`, revision 4). For this release only, these listed gaps do not by themselves prevent publication of the selected v0.1.0-rc.6 image identities. Preserve and disclose the actual incomplete, failed, stale or unverified status and associated risks; never represent a missing check, either GPU qualification or P08 as passed, and never imply that the mitigation was published. This exception changes only the release-blocking consequences of the listed gaps, including under REQ-020 and REQ-026. It does not change product behavior, acceptance thresholds, artifact identities, channel/read-back requirements or publication authorization. All other failures and every other release remain subject to the existing requirements.
 
 ## Go service foundation
 

@@ -32,11 +32,17 @@ authorize deployment, infrastructure changes, inference or probe workloads.
   env -u P07_LOCAL_TESTS P07_GPU_TESTS=1 P07_PUBLISHED_SELECTION="$SELECTION" \
     go test ./tests/acceptance -run '^TestClientCompatibility$/^official-openai-(json|text)$' -count=1 -v -timeout=12m
   env -u P07_LOCAL_TESTS P07_GPU_TESTS=1 P07_PUBLISHED_SELECTION="$SELECTION" \
+    P07_API_GC_TRACE=1 P07_SUPERVISOR_GC_TRACE=1 \
     go test ./tests/acceptance -run '^TestResidentMeasurements$' -count=1 -v -timeout=38m
   ```
 
   These require explicit workload authorization and exclusive ownership of the
-  selected GPU acceptance lock. The SDK selector is HTTP-only, not Desktop.
+  selected GPU acceptance lock. The v3 memory entry requires both GC flags shown
+  above and verifies their actual numeric-only runtime profiles; absence of a
+  role/proof is unknown, never a legacy RSS-only qualification. Health GETs may
+  obtain natural cycles under the unchanged phase deadline and 4096-call ceiling;
+  they never run inference or tune/force GC. Uninstrumented timing remains a
+  separate required entry. The SDK selector is HTTP-only, not Desktop.
   The user explicitly excluded Desktop/Electron in the current server stage.
   An unfiltered full P07 run still fails required unimplemented gates; partial
   server success does not qualify P07/P08 or authorize stable. Do not infer P08

@@ -85,16 +85,12 @@ func (h *Handler) ReadMultipart(
 		return input, nil, &domain.Failure{Kind: domain.Internal, Cause: makeErr}
 	}
 
-	var once sync.Once
-	var cleanErr error
-	cleanup = func() error {
-		once.Do(func() {
-			if removeErr := h.root.RemoveAll(dir); removeErr != nil {
-				cleanErr = &domain.Failure{Kind: domain.Internal, Cause: removeErr}
-			}
-		})
-		return cleanErr
-	}
+	cleanup = sync.OnceValue(func() error {
+		if removeErr := h.root.RemoveAll(dir); removeErr != nil {
+			return &domain.Failure{Kind: domain.Internal, Cause: removeErr}
+		}
+		return nil
+	})
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_ = cleanup()

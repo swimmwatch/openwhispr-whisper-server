@@ -13,8 +13,10 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // FormField preserves order and duplicates so negative workloads reach the server.
@@ -101,6 +103,12 @@ func (c *PublicClient) Transcribe(ctx context.Context, audio []byte, filename st
 	if err != nil {
 		return PublicReply{PublicDuration: time.Since(started)}, &publicRequestError{err}
 	}
+	return c.readReply(response, started)
+}
+
+// All public request paths consume the same bounded response contract. A matching
+// error code alone cannot turn a malformed rejection into acceptance evidence.
+func (c *PublicClient) readReply(response *http.Response, started time.Time) (PublicReply, error) {
 	defer response.Body.Close()
 	reply := PublicReply{Status: response.StatusCode}
 	content, err := io.ReadAll(io.LimitReader(response.Body, c.maxReplyBytes+1))
@@ -110,6 +118,9 @@ func (c *PublicClient) Transcribe(ctx context.Context, audio []byte, filename st
 	}
 	if int64(len(content)) > c.maxReplyBytes {
 		return reply, errors.New("public response exceeded the workload reply bound")
+	}
+	if !utf8.Valid(content) {
+		return reply, errors.New("public response is not valid UTF-8")
 	}
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil {
@@ -134,16 +145,25 @@ func (c *PublicClient) Transcribe(ctx context.Context, audio []byte, filename st
 	}
 	var failure struct {
 		Error *struct {
-			Message string  `json:"message"`
-			Type    string  `json:"type"`
-			Param   *string `json:"param"`
-			Code    string  `json:"code"`
+			Message *string         `json:"message"`
+			Type    string          `json:"type"`
+			Param   json.RawMessage `json:"param"`
+			Code    string          `json:"code"`
 		} `json:"error"`
 	}
-	if decodePublicJSON(content, &failure) != nil || failure.Error == nil || failure.Error.Code == "" {
+	if decodePublicJSON(content, &failure) != nil || failure.Error == nil {
 		return reply, errors.New("public error response is invalid")
 	}
-	reply.ErrorCode = failure.Error.Code
+	problem := failure.Error
+	var param *string
+	if problem.Message == nil || utf8.RuneCountInString(*problem.Message) > 256 ||
+		!slices.Contains([]string{"invalid_request_error", "rate_limit_error", "timeout_error", "service_unavailable_error", "api_error"}, problem.Type) ||
+		json.Unmarshal(problem.Param, &param) != nil ||
+		param != nil && !slices.Contains([]string{"file", "model", "language", "prompt", "temperature", "response_format", "stream"}, *param) ||
+		!slices.Contains([]string{"invalid_request", "unsupported_audio", "audio_duration_limit", "model_not_found", "route_not_found", "payload_too_large", "rate_limit_exceeded", "rate_limit_unavailable", "queue_full", "operation_timeout", "not_ready", "backend_unavailable", "gpu_unavailable", "provisioning_failed", "shutting_down", "internal_error"}, problem.Code) {
+		return reply, errors.New("public error response is invalid")
+	}
+	reply.ErrorCode = problem.Code
 	return reply, nil
 }
 

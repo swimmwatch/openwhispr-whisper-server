@@ -1,0 +1,99 @@
+name: Docker layer cache
+
+'on':
+  push:
+    branches:
+    - main
+    paths:
+    - .github/actions/**
+    - .github/workflows/image-cache.yml
+    - .dockerignore
+    - .python-version
+    - containers/**
+    - cmd/**
+    - internal/**
+    - go.mod
+    - go.sum
+    - LICENSE
+    - THIRD_PARTY_NOTICES.md
+    - tools/versions.yaml
+    - tools/build_cache.py
+    - tools/release/**
+    - pyproject.toml
+    - uv.lock
+  workflow_dispatch: null
+
+permissions: {}
+
+# Do not cancel a cold cache seed when another change reaches main.
+concurrency:
+  group: whisper-image-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    name: cache-${{ matrix.role }}
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        role:
+        - api
+        - backend
+    steps:
+    - name: Check out trusted default-branch source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+
+    - name: Load shared CI configuration
+      uses: ./.github/actions/ci-config
+
+    - name: Set up locked Python tooling
+      uses: ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+
+    - name: Prepare task-local Docker authentication
+      run: |
+        umask 077
+        mkdir -p "$RUNNER_TEMP/cache-docker-auth"
+        echo "DOCKER_CONFIG=$RUNNER_TEMP/cache-docker-auth" >> "$GITHUB_ENV"
+
+    - name: Authenticate GHCR cache writer
+      uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+      env:
+        DOCKER_CONFIG: ${{ runner.temp }}/cache-docker-auth
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+        logout: true
+
+    # Roles have disjoint registry packages. Verified OCI exports are not releases.
+    - name: Build and verify image while refreshing shared layers
+      uses: ./.github/actions/build-image
+      with:
+        role: ${{ matrix.role }}
+        source-sha: ${{ github.sha }}
+        cache-access: write
+
+    - name: Preserve safe cache promotion evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: cache-${{ matrix.role }}
+        path: |
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/cache.json
+          ${{ runner.temp }}/artifacts/${{ matrix.role }}/image.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}

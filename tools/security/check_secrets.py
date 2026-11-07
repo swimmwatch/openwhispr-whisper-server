@@ -14,6 +14,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tools.security.process import run_private
+
+# Empty paths disable config/ignorefile discovery, not Trivy's inline suppressions.
+TRIVY_ISOLATION_FLAGS = ("--config", "", "--ignorefile", "")
 SKIP_DIRS = (".git", ".local", ".venv", "**/.workflow", "**/__pycache__")
 SKIP_FILES = ("docs/specs/**/manifest.yaml", "docs/specs/**/decisions.yaml")
 
@@ -44,6 +50,9 @@ def evaluate(raw: Any, scanner_exit: int) -> tuple[dict[str, Any], int]:
         if not isinstance(result, dict):
             raise ValueError("Malformed scanner result")
 
+        if result.get("ExperimentalModifiedFindings", []) != []:
+            raise ValueError("Unapproved suppressed scanner findings")
+
         findings = result.get("Secrets", [])
         if not isinstance(findings, list):
             raise ValueError("Malformed secret findings")
@@ -70,10 +79,8 @@ def scanner_identity(binary: str | Path, project_root: Path) -> tuple[str, str]:
     versions = json.loads((project_root / "tools/versions.yaml").read_text())
     expected = versions["scanners"]["trivy"]["version"].lstrip("v")
     env = {key: value for key, value in os.environ.items() if not key.startswith("TRIVY_")}
-    version = subprocess.run(
-        [str(binary), "--version"], capture_output=True, text=True, env=env, timeout=15, check=True
-    )
-    if not version.stdout.startswith(f"Version: {expected}\n"):
+    version = run_private([str(binary), "--version"], cwd=project_root, env=env, timeout=15)
+    if version.returncode != 0 or not version.stdout.startswith(f"Version: {expected}\n".encode()):
         raise ValueError("Unexpected Trivy version")
 
     return binary, expected
@@ -124,22 +131,14 @@ def scan(
     with tempfile.TemporaryDirectory(prefix="whisper-secret-check-") as temporary:
         private = Path(temporary)
         report_path = private / "raw.json"
-        config_path = private / "config.yaml"
-        ignore_path = private / "ignore"
-        config_path.write_text("{}\n")
-        ignore_path.write_text("")
-
         command = [
             str(binary),
             "fs",
-            "--config",
-            str(config_path),
+            *TRIVY_ISOLATION_FLAGS,
             "--scanners",
             "secret",
             "--secret-config",
             str(secret_config.resolve()),
-            "--ignorefile",
-            str(ignore_path),
             "--format",
             "json",
             "--output",
@@ -158,7 +157,7 @@ def scan(
 
         command.append(".")
 
-        process = subprocess.run(command, cwd=root, env=env, capture_output=True, timeout=180)
+        process = run_private(command, cwd=root, env=env, timeout=180)
 
         try:
             raw = json.loads(report_path.read_bytes())

@@ -26,6 +26,10 @@ import (
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
 )
 
+// Keep this below the measured longest-input admission interval. Three seconds
+// can legitimately finish on this GPU and is not a deterministic deadline fault.
+const residentDeadlineFixtureSeconds = 1
+
 func lifecycleDeadlineResult(result lifecycleCallResult) bool {
 	return result.err == nil && result.reply.Status == http.StatusRequestTimeout && result.reply.ErrorCode == "operation_timeout"
 }
@@ -163,9 +167,16 @@ func refreshLifecycleClient(ctx context.Context, e *acceptanceEnvironment) error
 	return nil
 }
 
-func lifecycleSnapshotFacts(s DockerSnapshot, state string) error {
+func lifecycleProcessFacts(s DockerSnapshot, state string) error {
 	if s.PrivateHealth == nil || s.PrivateHealth.HTTPStatus != http.StatusOK || s.PrivateHealth.Status != state || !s.PrivateHealth.CUDAReady || s.PrivateHealth.Model == "" || s.PrivateHealth.ProcessGeneration == "" || s.PrivateHealth.ProtocolVersion == "" || s.PrivateHealth.ConfigurationFingerprint == "" || s.NativeHostPID == nil || *s.NativeHostPID <= 0 || s.NativeNamespacePID == nil || *s.NativeNamespacePID <= 1 {
 		return errors.New("required lifecycle health/process observation is unavailable")
+	}
+	return nil
+}
+
+func lifecycleSnapshotFacts(s DockerSnapshot, state string) error {
+	if err := lifecycleProcessFacts(s, state); err != nil {
+		return err
 	}
 	for _, r := range []DockerResourceSnapshot{s.API, s.Backend} {
 		if r.RSSBytes == nil || r.FDCount == nil || r.ScratchFileCount == nil || r.ScratchBytes == nil {
@@ -395,19 +406,32 @@ func watchLifecycleReplacement(t *testing.T, e *acceptanceEnvironment, before Do
 }
 
 type lifecycleCall struct {
-	cancel   context.CancelFunc
-	done     chan lifecycleCallResult
-	consumed bool
+	apiID, hostStart string
+	before           DockerSnapshot
+	cancel           context.CancelFunc
+	done             chan lifecycleCallResult
+	consumed         bool
 }
 type lifecycleCallResult struct {
 	reply PublicReply
 	err   error
 }
 
-func startLifecycleCall(t *testing.T, e *acceptanceEnvironment, audio []byte, filename string) *lifecycleCall {
+func startLifecycleCall(t *testing.T, e *acceptanceEnvironment, before DockerSnapshot, audio []byte, filename string) *lifecycleCall {
 	t.Helper()
+	if err := lifecycleSnapshotFacts(before, "ready"); err != nil {
+		t.Fatal(err)
+	}
+	containers, err := e.target.Containers(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := lifecyclePIDStart(*before.NativeHostPID)
+	if err != nil {
+		t.Fatal("original native lifetime unavailable before lifecycle operation")
+	}
 	ctx, cancel := context.WithCancel(e.ctx)
-	call := &lifecycleCall{cancel: cancel, done: make(chan lifecycleCallResult, 1)}
+	call := &lifecycleCall{apiID: containers.APIID, hostStart: start, before: before, cancel: cancel, done: make(chan lifecycleCallResult, 1)}
 	client, model := e.client, e.settings.Models.Served
 	go func() {
 		reply, err := client.Transcribe(ctx, audio, filename, []FormField{{"model", model}, {"language", "en"}, {"temperature", "0"}})
@@ -465,12 +489,12 @@ func waitLifecycleBusy(t *testing.T, e *acceptanceEnvironment, call *lifecycleCa
 			t.Fatal("long fixture completed or rejected before an actual Busy cancellation barrier")
 		default:
 		}
-		snapshot, err := e.target.Observe(ctx)
+		snapshot, err := observeLifecycleBusy(ctx, e, call)
 		if err != nil {
 			t.Fatal("actual Busy observation is unavailable", err)
 		}
 		if snapshot.PrivateHealth != nil && snapshot.PrivateHealth.Status == "busy" {
-			if err := lifecycleSnapshotFacts(snapshot, "busy"); err != nil {
+			if err := lifecycleProcessFacts(snapshot, "busy"); err != nil {
 				t.Fatal(err)
 			}
 			if snapshot.PrivateHealth.ProcessGeneration != generation {
@@ -729,7 +753,7 @@ func runLifecycleCases(t *testing.T, e *acceptanceEnvironment) {
 			before := readyLifecycleSnapshot(t, e)
 			finish := watchLifecycleReplacement(t, e, before)
 			long := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
-			call := startLifecycleCall(t, e, long, "jfk-900.flac")
+			call := startLifecycleCall(t, e, before, long, "jfk-900.flac")
 			waitLifecycleBusy(t, e, call, before.PrivateHealth.ProcessGeneration)
 			call.cancel()
 			result := awaitLifecycleCall(t, call, time.Duration(e.settings.Timeouts.CleanupSeconds+5)*time.Second)
@@ -753,13 +777,13 @@ func runLifecycleCases(t *testing.T, e *acceptanceEnvironment) {
 		{"active_operation_deadline", func(t *testing.T) {
 			originalOperationSeconds := e.settings.Timeouts.OperationSeconds
 			settings := e.settings
-			settings.Timeouts.OperationSeconds = 3
+			settings.Timeouts.OperationSeconds = residentDeadlineFixtureSeconds
 			writeAndRecreate(t, e, settings)
 			waitLifecycleHealthy(t, e)
 			before := readyLifecycleSnapshot(t, e)
 			finish := watchLifecycleReplacement(t, e, before)
 			long := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
-			call := startLifecycleCall(t, e, long, "jfk-900.flac")
+			call := startLifecycleCall(t, e, before, long, "jfk-900.flac")
 			busy := waitLifecycleBusy(t, e, call, before.PrivateHealth.ProcessGeneration)
 			result := awaitLifecycleCall(t, call, time.Duration(e.settings.Timeouts.OperationSeconds+e.settings.Timeouts.CleanupSeconds+5)*time.Second)
 			recordLifecycleDeadlineFacts(t, e, result, before, busy)
@@ -775,7 +799,7 @@ func runLifecycleCases(t *testing.T, e *acceptanceEnvironment) {
 			verifyLifecycleScratch(t, e, before)
 			trace := finish()
 			lifecycleTracePassed(t, trace, true)
-			lifecycleReport(t, e, "operation-deadline", map[string]any{"operation_seconds": 3, "original_operation_seconds": originalOperationSeconds, "fixture_decoded_seconds": 900}, &trace)
+			lifecycleReport(t, e, "operation-deadline", map[string]any{"operation_seconds": e.settings.Timeouts.OperationSeconds, "original_operation_seconds": originalOperationSeconds, "fixture_decoded_seconds": 900}, &trace)
 		}},
 		{"api_death", func(t *testing.T) { runLifecycleContainerDeath(t, e, "api") }},
 		{"backend_death", func(t *testing.T) { runLifecycleContainerDeath(t, e, "backend") }},
@@ -783,7 +807,7 @@ func runLifecycleCases(t *testing.T, e *acceptanceEnvironment) {
 			before := readyLifecycleSnapshot(t, e)
 			finish := watchLifecycleReplacement(t, e, before)
 			long := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
-			call := startLifecycleCall(t, e, long, "jfk-900.flac")
+			call := startLifecycleCall(t, e, before, long, "jfk-900.flac")
 			busy := waitLifecycleBusy(t, e, call, before.PrivateHealth.ProcessGeneration)
 			ids, err := e.target.Containers(e.ctx)
 			if err != nil {

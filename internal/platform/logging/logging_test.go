@@ -19,8 +19,12 @@ func TestStructuredLoggingPrivacyAtEverySeverity(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			var severity slog.Level
+			if err := severity.UnmarshalText([]byte(level)); err != nil {
+				t.Fatal(err)
+			}
 			ctx := WithRequestID(context.Background(), "safe-id")
-			Emit(logger, ctx, slog.LevelError, Event{
+			Emit(logger, ctx, severity, Event{
 				Name:      RequestCompleted,
 				Method:    "PRIVATE",
 				Route:     "/PRIVATE?q=PRIVATE",
@@ -35,7 +39,8 @@ func TestStructuredLoggingPrivacyAtEverySeverity(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &entry); err != nil {
 				t.Fatal(err)
 			}
-			if entry["request_id"] != "safe-id" || entry["status"] != float64(http.StatusInternalServerError) || entry["component"] != "api" {
+			if entry["request_id"] != "safe-id" || entry["status"] != float64(http.StatusInternalServerError) ||
+				entry["component"] != "api" || entry["level"] != strings.ToUpper(level) {
 				t.Fatalf("invalid event: %v", entry)
 			}
 			if RequestID(WithRequestID(ctx, "PRIVATE\n")) != "" {

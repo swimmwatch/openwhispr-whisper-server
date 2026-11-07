@@ -44,6 +44,19 @@ def inspect_layout(layout: Path, source_sha: str) -> dict[str, Any]:
     require(len(platforms) == 1, "Exactly one Linux amd64 runtime is required")
 
     platform = platforms[0]
+    require(
+        all(
+            item == platform
+            or (
+                item.get("annotations", {}).get("vnd.docker.reference.type")
+                == "attestation-manifest"
+                and item.get("platform", {"architecture": "unknown", "os": "unknown"})
+                == {"architecture": "unknown", "os": "unknown"}
+            )
+            for item in manifest["manifests"]
+        ),
+        "Unsupported OCI manifest outside the inspected Linux amd64 runtime",
+    )
     image = json.loads(blob(layout, platform))
     config = json.loads(blob(layout, image["config"]))
     require(

@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -34,6 +33,11 @@ type DockerTarget struct {
 	opts  DockerOptions
 	mu    sync.Mutex
 	owned bool
+	// Only fixed P07 TLS and numeric Go-process GC observation fixtures may add
+	// runtime environment. No arbitrary Compose/image/mount override exists.
+	modelSourceTrust  bool
+	supervisorGCTrace bool
+	apiGCTrace        bool
 }
 type DockerContainers struct{ APIID, BackendID string }
 type DockerMount struct {
@@ -160,13 +164,20 @@ func (w *dockerOutput) Write(p []byte) (int, error) {
 }
 
 func (t *DockerTarget) run(parent context.Context, operation string, combined bool, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(parent, t.opts.CommandTimeout)
+	return t.runWithTimeout(parent, t.opts.CommandTimeout, operation, combined, args...)
+}
+
+// runWithTimeout lets an attached model observer own its declared phase budget.
+// Ordinary CLI calls retain CommandTimeout; an earlier parent deadline still wins.
+func (t *DockerTarget) runWithTimeout(parent context.Context, budget time.Duration, operation string, combined bool, args ...string) ([]byte, error) {
+	if budget <= 0 {
+		return nil, errors.New("positive Docker observation budget is required")
+	}
+	ctx, cancel := context.WithTimeout(parent, budget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, t.opts.DockerExecutable, args...)
 	cmd.Dir = t.opts.Root
 	cmd.Env = t.environment()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.WaitDelay = 200 * time.Millisecond
 	output := &dockerOutput{cancel: cancel, retain: true}
 	diagnostic := &dockerOutput{cancel: cancel}
 	cmd.Stdout = output
@@ -174,18 +185,7 @@ func (t *DockerTarget) run(parent context.Context, operation string, combined bo
 	if combined {
 		cmd.Stderr = output
 	}
-	cmd.Cancel = func() error {
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		if errors.Is(err, syscall.ESRCH) {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	err := cmd.Run()
-	// A CLI/plugin descendant must not survive even if its immediate parent exits.
-	if cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	err := runOwnedCommand(cmd)
 	if output.overflow || diagnostic.overflow {
 		return nil, errors.New("Docker " + operation + " output exceeded its observation limit")
 	}
@@ -200,8 +200,74 @@ func (t *DockerTarget) run(parent context.Context, operation string, combined bo
 	return output.data.Bytes(), nil
 }
 
+// setModelSourceTrust uses only the existing read-only prepared mount. The
+// generated private runtime input changes neither image nor application settings.
+func (t *DockerTarget) setModelSourceTrust(enabled bool) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if err := t.prepareRuntimeFixture(enabled, t.supervisorGCTrace, t.apiGCTrace); err != nil {
+		return err
+	}
+	t.modelSourceTrust = enabled
+	return nil
+}
+
+// setSupervisorGCTrace enables numeric diagnostics, never GC tuning. The flag
+// alone establishes no qualification; physical RSS/resource ownership checks apply.
+func (t *DockerTarget) setSupervisorGCTrace(enabled bool) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if err := t.prepareRuntimeFixture(t.modelSourceTrust, enabled, t.apiGCTrace); err != nil {
+		return err
+	}
+	t.supervisorGCTrace = enabled
+	return nil
+}
+
+// setAPIGCTrace is supplemental evidence only; it cannot relax API RSS bounds.
+func (t *DockerTarget) setAPIGCTrace(enabled bool) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if err := t.prepareRuntimeFixture(t.modelSourceTrust, t.supervisorGCTrace, enabled); err != nil {
+		return err
+	}
+	t.apiGCTrace = enabled
+	return nil
+}
+
+// Fixed fixtures share one environment owner, preserving each other's settings.
+// No caller-supplied key, value, path or override is accepted.
+func (t *DockerTarget) prepareRuntimeFixture(sourceTrust, gcTrace, apiTrace bool) error {
+	if !sourceTrust && !gcTrace && !apiTrace {
+		return nil
+	}
+	environment := map[string]string{}
+	if sourceTrust {
+		environment["SSL_CERT_FILE"] = "/prepared/p07-source-ca.pem"
+	}
+	if gcTrace {
+		environment["GODEBUG"] = "gctrace=1,scavtrace=1"
+	}
+	services := map[string]any{"backend": map[string]any{"environment": environment}}
+	if apiTrace {
+		services["api"] = map[string]any{"environment": map[string]string{"GODEBUG": "gctrace=1,scavtrace=1"}}
+	}
+	fixture, err := json.Marshal(map[string]any{"services": services})
+	if err != nil {
+		return errors.New("cannot encode the private backend runtime fixture")
+	}
+	file := filepath.Join(filepath.Dir(t.opts.ConfigFile), "p07-runtime-fixtures.json")
+	if os.WriteFile(file, fixture, 0600) != nil || os.Chmod(file, 0600) != nil {
+		return errors.New("cannot protect the private backend runtime fixture")
+	}
+	return nil
+}
+
 func (t *DockerTarget) compose(ctx context.Context, operation string, args ...string) ([]byte, error) {
 	base := []string{"compose", "--project-name", t.opts.Project, "--project-directory", t.opts.Root, "--file", filepath.Join(t.opts.Root, "deploy", "compose.yaml"), "--env-file", "/dev/null"}
+	if t.modelSourceTrust || t.supervisorGCTrace || t.apiGCTrace {
+		base = append(base, "--file", filepath.Join(filepath.Dir(t.opts.ConfigFile), "p07-runtime-fixtures.json"))
+	}
 	return t.run(ctx, operation, false, append(base, args...)...)
 }
 

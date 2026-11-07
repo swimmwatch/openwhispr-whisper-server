@@ -177,10 +177,22 @@ def build(
 
 
 def record_image(
-    output: Path, source_sha: str, cold: bool, expected_digest: str | None = None
+    output: Path,
+    source_sha: str,
+    cold: bool,
+    expected_digest: str | None = None,
+    *,
+    cache_record: Path | None = None,
+    role: str | None = None,
 ) -> None:
-    """Verify an OCI export before recording the identities used by later jobs."""
+    """Verify OCI bytes and record configured cache inputs, not inferred cache hits."""
     source(source_sha)
+    cache = None
+    if cache_record is not None:
+        from tools.build_cache import validate_record
+
+        require(role in ("api", "backend"), "Cache metadata requires an explicit image role")
+        cache = validate_record(json.loads(cache_record.read_bytes()), cold=cold, role=role)
     extract(output / "image.tar", output / "layout")
 
     result = inspect_layout(output / "layout", source_sha)
@@ -192,6 +204,8 @@ def record_image(
         build_input_identity="sha256:" + sha((ROOT / "containers/build-inputs.json").read_bytes()),
         runtime_input_identity=runtime_identity(),
     )
+    if cache is not None:
+        result["build_cache"] = cache
     (output / "image.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
 
 
@@ -371,6 +385,8 @@ def main() -> int:
     image.add_argument("--source-sha", required=True)
     image.add_argument("--expected-digest", required=True)
     image.add_argument("--cold", action="store_true")
+    image.add_argument("--cache-record", type=Path)
+    image.add_argument("--role", choices=("api", "backend"))
 
     c = sub.add_parser("chart")
     c.add_argument("--output", type=Path, required=True)
@@ -400,7 +416,14 @@ def main() -> int:
                 args.parallelism,
             )
         elif args.action == "record-image":
-            record_image(args.output.resolve(), args.source_sha, args.cold, args.expected_digest)
+            record_image(
+                args.output.resolve(),
+                args.source_sha,
+                args.cold,
+                args.expected_digest,
+                cache_record=args.cache_record,
+                role=args.role,
+            )
         elif args.action == "chart":
             chart(args.output.resolve(), args.helm, args.source_sha, args.version)
         elif args.action == "jobs":

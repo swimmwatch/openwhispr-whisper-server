@@ -1,18 +1,42 @@
 {
   "schema_version": 1,
   "reviewed_on": "2026-10-27",
-  "build_input_identity": "sha256:23a4c1472d2627186dde1b46591523f9c3e763e7743074b6c8c1f891ee39a3be",
+  "build_input_identity": "sha256:bfadeb149a48a1d34e3e582531f5bdb19fbbc69aeabc74e736b8078f869d8995",
   "components": [
     {
       "owner": "swimmwatch",
       "expires": "2026-10-31",
-      "conclusion": "no_applicable_blocking_advisories",
+      "conclusion": "unresolved",
       "role": "api",
       "name": "ffmpeg",
       "version": "9.0.2",
       "revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
-      "rationale": "Reconciled the 2026-10-29 Debian FFmpeg tracker against pinned 9.0.2 and the restricted audio build: all open entries still vulnerable or undetermined for the 9.0.2-based sid package are accounted for below. CVE-2026-96611 and CVE-2026-52297 moved to resolved and affect versions before 9.0. Applicable MEDIUM advisories remain reported, not exempted. This is not a zero-vulnerability statement.",
+      "rationale": "Partial review on 2026-11-07 found six additional published findings affecting upstream versions through 9.0.2. Final local API image index sha256:00ad574bb6962c69520b89b752bdcb9a4477caed30501d3aa6b78ddc93b04586 has no registered h264/g2m/pcx/sunrast/cdxl/huffyuv/ffvhuff/hymt decoders or IMF demuxer; its protocol inventory is input cache/pipe and output pipe. Actual profile/parser tests and all twelve supported-audio/mixed-video normalization controls passed in normal and Go race runs. These six new cases are not applicable to this compiled profile, not fixed upstream and not cleared for older published images. Earlier findings and source identities are retained as historical evidence, not freshly revalidated. The prior expiry and whole-inventory review date are deliberately not renewed; the full component conclusion remains unresolved. See docs/verification/security-audit-2026-11-07.md.",
       "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/120xxx/CVE-2026-120210.json",
+          "sha256": "c319984d9e1217670eb79d1d5df8e9fbf6ace297a98101286dd51f74ba9c6f8c"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/120xxx/CVE-2026-120243.json",
+          "sha256": "40df8fe48540f915947297df627babf791366fb87690f46de46308bf46fa6d14"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/120xxx/CVE-2026-120244.json",
+          "sha256": "9375db0b708ecdb96d7dac9e409332d1bef0ea03d176223fc1fea23003106ef9"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/120xxx/CVE-2026-120245.json",
+          "sha256": "17178d1775d80aa5d879d96e7fe7135e4f066e1536fe32808c1eaf24816297a7"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/120xxx/CVE-2026-120246.json",
+          "sha256": "5aa355d2a2f95f545340e7e3650329b233dcff20b9f34af0d3add9cb6e9a6a97"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/120xxx/CVE-2026-120247.json",
+          "sha256": "7d77c0c1f859a32fbf88ccf5160fc39b86266d8a168420fb9415fc6b3a7e2c03"
+        },
         {
           "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2025/52xxx/CVE-2025-52290.json",
           "sha256": "6009fe58dc3a316e73be567d45d19c25c33dde2aac9fe103217a6f6ad5fdcbf4"
@@ -47,6 +71,42 @@
         }
       ],
       "advisories": [
+        {
+          "id": "CVE-2026-120210",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The fresh local API image identified in this component review has no registered IMF demuxer; its input protocols are only cache/pipe. The affected ASSETMAP parser is excluded from the packaged input profile, as verified by actual binary inventory and profile tests. This does not patch upstream 9.0.2 or qualify older images."
+        },
+        {
+          "id": "CVE-2026-120243",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The current build explicitly disables g2m, and actual decoder inventory/profile tests for the fresh local API image identified above confirm no G2M decoder is registered. Supported-audio and mixed-video normalization controls pass. This is compiled-profile exclusion, not an inference from audio-only output or an upstream fix."
+        },
+        {
+          "id": "CVE-2026-120244",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The current build explicitly disables pcx, and actual decoder inventory/profile tests for the fresh local API image identified above confirm no PCX decoder is registered. This removes the affected decoder from embedded-image/probe selection as well as direct decoding; supported-audio controls pass. No upstream fix or older-image qualification is claimed."
+        },
+        {
+          "id": "CVE-2026-120245",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The current build explicitly disables sunrast, and actual decoder inventory/profile tests for the fresh local API image identified above confirm no Sun Raster decoder is registered. Supported-audio controls pass. This is compiled-profile exclusion of the affected decoder, not an upstream source fix or proof for older published images."
+        },
+        {
+          "id": "CVE-2026-120246",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The current build explicitly disables cdxl, and actual decoder inventory/profile tests for the fresh local API image identified above confirm no CDXL decoder is registered. Its direct demuxer is also absent, while supported-audio controls pass. The conclusion is limited to this compiled profile and does not claim upstream is patched."
+        },
+        {
+          "id": "CVE-2026-120247",
+          "severity": "MEDIUM",
+          "disposition": "not_applicable",
+          "rationale": "The current build explicitly disables all three shared-code entries huffyuv, ffvhuff and hymt. Actual decoder inventory/profile tests for the fresh local API image identified above confirm all three absent; normalization of Huffyuv-video plus PCM-audio Matroska still passes. This excludes the affected video decoder without relying on output-only video disabling; it does not patch upstream or qualify older images."
+        },
         {
           "id": "CVE-2025-52290",
           "severity": "HIGH",
@@ -94,12 +154,24 @@
     {
       "owner": "swimmwatch",
       "expires": "2026-10-31",
-      "conclusion": "no_applicable_blocking_advisories",
+      "conclusion": "unresolved",
       "role": "backend",
       "name": "whisper.cpp",
       "revision": "6ac14546046ffb17d144a08bcad65337e535cf5f",
-      "rationale": "Checked OpenWhispr and ggml-org public advisory feeds plus the separately published model-loader CVE. Empty repository feeds alone are not treated as proof of no vulnerabilities. Retained model-loader MEDIUM finding remains visible.",
+      "rationale": "Partial review on 2026-11-07 adds missing published advisories and checks their input boundaries against the pinned source. The unchanged native source retains the cited patterns. Go wrapper/header checks reduce exposure but do not fix native code or qualify already published images. Complete current-source reconciliation and exact-image/native evidence remain incomplete; the prior expiry and whole-inventory review date are deliberately not renewed. See docs/verification/security-audit-2026-11-07.md.",
       "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/17xxx/CVE-2026-17512.json",
+          "sha256": "8564bdbe44bb43d42e2de21ec8032e6aa08ed0b971a8fa86e5d13904a9c06895"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/110xxx/CVE-2026-110810.json",
+          "sha256": "5926d986e285bc7cbe513acb70f3d49ac20b75094e62e1c2ae5227e85522d9c6"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/10xxx/CVE-2026-10298.json",
+          "sha256": "3a9730c04b7f0fb92168fb43b77efaf71436e5266c6fd0f92b9a733290cea6d6"
+        },
         {
           "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/17xxx/CVE-2026-17513.json",
           "sha256": "46d90c3750a9d4467e778646d9cd48c0a181871be340f441e8982e316d7cdaaf"
@@ -114,6 +186,24 @@
         }
       ],
       "advisories": [
+        {
+          "id": "CVE-2026-17512",
+          "severity": "MEDIUM",
+          "disposition": "applicable",
+          "rationale": "Pinned native log_mel_spectrogram performs a 200-sample reverse copy from samples+1 without a minimum-length check. Current Go supervision validates then pads short canonical WAV input to at least 201 frames, with public/private-boundary tests using a native stand-in. This is a wrapper mitigation, not a native fix or proof for older images; upstream PR 3925 remains unmerged at this review. Exact-image/native confirmation remains required. Severity records CNA CVSS 4.0."
+        },
+        {
+          "id": "CVE-2026-110810",
+          "severity": "LOW",
+          "disposition": "applicable",
+          "rationale": "Pinned whisper_model_load reads tensor ttype without the range check added by upstream commit 60c0be6ac8fa71b1a2ae2dd938a31a34a508e774. Go checks only the fixed 48-byte header, not tensor records. Models are trusted operator-selected artifacts rather than request uploads; their checksum verifies selected bytes, not native parser safety. No fork, upstream fix or malicious-model native execution is claimed."
+        },
+        {
+          "id": "CVE-2026-10298",
+          "severity": "MEDIUM",
+          "disposition": "applicable",
+          "rationale": "The pinned native loader retains unchecked zero-dimension header use described by upstream issue 3807. Go ReadMetadata rejects zero/negative dimensions before native load, narrowing the documented trigger, but this is not complete model validation or a native fix. End-to-end proof with the selected image remains outstanding. Severity records CNA CVSS 4.0."
+        },
         {
           "id": "CVE-2026-17513",
           "severity": "MEDIUM",

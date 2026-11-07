@@ -16,6 +16,24 @@ func TestSettingsValidateRejectsInvalidProgrammaticValues(t *testing.T) {
 		{"schema", func(c *Settings) {
 			c.SchemaVersion = 2
 		}},
+		{"rate-store", func(c *Settings) {
+			c.API.RateLimit.Store = "PRIVATE-redis"
+		}},
+		{"rate-zero", func(c *Settings) {
+			c.API.RateLimit.RequestsPerSecond = 0
+		}},
+		{"rate-negative", func(c *Settings) {
+			c.API.RateLimit.RequestsPerSecond = -1
+		}},
+		{"rate-zero-burst", func(c *Settings) {
+			c.API.RateLimit.Burst = 0
+		}},
+		{"rate-negative-burst", func(c *Settings) {
+			c.API.RateLimit.Burst = -1
+		}},
+		{"rate-zero-idle", func(c *Settings) {
+			c.API.RateLimit.IdleSeconds = 0
+		}},
 		{"rate-idle-budget", func(c *Settings) {
 			c.API.RateLimit.IdleSeconds = 1
 		}},
@@ -27,6 +45,21 @@ func TestSettingsValidateRejectsInvalidProgrammaticValues(t *testing.T) {
 		}},
 		{"rate-idle-overflow", func(c *Settings) {
 			c.API.RateLimit.IdleSeconds = math.MaxInt
+		}},
+		{"operation-overflow", func(c *Settings) {
+			c.Timeouts.OperationSeconds = int(maxSeconds) + 1
+		}},
+		{"cleanup-overflow", func(c *Settings) {
+			c.Timeouts.CleanupSeconds = int(maxSeconds) + 1
+		}},
+		{"shutdown-overflow", func(c *Settings) {
+			c.Timeouts.ShutdownSeconds = int(maxSeconds) + 1
+		}},
+		{"provisioning-overflow", func(c *Settings) {
+			c.Timeouts.ProvisioningSeconds = int(maxSeconds) + 1
+		}},
+		{"decoded-duration-overflow", func(c *Settings) {
+			c.Limits.DecodedSeconds = int(maxSeconds) + 1
 		}},
 		{"untrusted-forwarding", func(c *Settings) {
 			c.API.ClientIP.Source = "x-forwarded-for"
@@ -58,6 +91,30 @@ func TestSettingsValidateRejectsInvalidProgrammaticValues(t *testing.T) {
 				t.Fatalf("invalid settings accepted or exposed: %v", err)
 			}
 		})
+	}
+}
+
+func TestSettingsValidateAcceptsMaximumSeconds(t *testing.T) {
+	settings, err := Load(nil, []string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := CanonicalFingerprint(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Timeouts = Timeouts{
+		OperationSeconds:    int(maxSeconds),
+		CleanupSeconds:      int(maxSeconds),
+		ShutdownSeconds:     int(maxSeconds),
+		ProvisioningSeconds: int(maxSeconds),
+	}
+	settings.Limits.DecodedSeconds = int(maxSeconds)
+	if err := settings.Validate(); err != nil {
+		t.Fatal("representable duration boundary rejected", err)
+	}
+	if got, err := CanonicalFingerprint(settings); err != nil || got != fingerprint {
+		t.Fatalf("valid duration limits changed configuration compatibility: %q %v", got, err)
 	}
 }
 

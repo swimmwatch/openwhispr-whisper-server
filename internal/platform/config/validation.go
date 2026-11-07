@@ -2,10 +2,8 @@ package config
 
 import (
 	"encoding/json"
-	"math"
 	"path/filepath"
 	"reflect"
-	"strings"
 
 	"github.com/knadh/koanf/v2"
 )
@@ -30,21 +28,14 @@ func validatePartial(part *koanf.Koanf, values Settings, bindings []binding) err
 }
 
 func validatePartialFields(part *koanf.Koanf, values Settings, bindings []binding) error {
-	value := reflect.ValueOf(values)
+	var selected []string
 	for _, b := range bindings {
-		if !part.Exists(b.path) {
-			continue
+		if part.Exists(b.path) {
+			selected = append(selected, b.field)
 		}
-		field := value.FieldByIndex(b.index)
-		if fields.Var(field.Interface(), b.rule) != nil {
-			return ErrInvalid
-		}
-		if strings.HasSuffix(b.path, "Seconds") && field.Int() > maxSeconds {
-			return ErrInvalid
-		}
-		if field.Kind() == reflect.Float64 && (math.IsNaN(field.Float()) || math.IsInf(field.Float(), 0)) {
-			return ErrInvalid
-		}
+	}
+	if fields.StructPartial(values, selected...) != nil {
+		return ErrInvalid
 	}
 	return nil
 }
@@ -87,7 +78,7 @@ func validatePartialConstraints(part *koanf.Koanf, values Settings) error {
 		return ErrInvalid
 	}
 	if part.Exists("api.rateLimit.idleSeconds") && part.Exists("api.rateLimit.burst") && part.Exists("api.rateLimit.requestsPerSecond") {
-		if float64(values.API.RateLimit.IdleSeconds) < float64(values.API.RateLimit.Burst)/values.API.RateLimit.RequestsPerSecond {
+		if values.API.RateLimit.refillExceedsIdleWindow() {
 			return ErrInvalid
 		}
 	}

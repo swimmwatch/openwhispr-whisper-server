@@ -1,8 +1,8 @@
 """Exercise the official OpenAI SDK against an explicitly selected loopback API.
 
 This is a Linux main-thread CLI, not a GPU qualification or performance gate.
-Run through the locked contributor environment; only the pinned public JFK WAV
-is accepted. Responses and API credentials are never emitted in diagnostics.
+Run through the locked contributor environment; only pinned public JFK audio
+fixtures are accepted. Responses and API credentials are never emitted in diagnostics.
 """
 
 import argparse
@@ -15,6 +15,7 @@ import sys
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
@@ -25,6 +26,48 @@ from openai import APIError, APIStatusError, APITimeoutError, DefaultHttpxClient
 JFK_SHA256 = "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e"
 JFK_BYTES = 352078
 ResponseFormat = Literal["json", "text"]
+
+
+@dataclass(frozen=True)
+class PublicFixture:
+    size_bytes: int
+    sha256: str
+    media_type: str
+
+
+# Public-domain JFK derivatives, pinned alongside their source/license/encoder recipe
+# in the acceptance fixture catalog. MPEG/MPGA are MP3 filename-family variants;
+# MP4 has trailing moov, and the two OGG inputs exercise Vorbis and Opus separately.
+PUBLIC_FIXTURES = {
+    "jfk.wav": PublicFixture(JFK_BYTES, JFK_SHA256, "audio/wav"),
+    "jfk.mp3": PublicFixture(
+        133533, "ad6047a27423cd670bc9f39cce46b46054576f584449cff5fba5dc7c72737923", "audio/mpeg"
+    ),
+    "jfk.mpeg": PublicFixture(
+        133533, "a50de786e9d2ad6623c2929143c0e1c163d2aee77e2fd3f677c2a0a4089da56d", "audio/mpeg"
+    ),
+    "jfk.mpga": PublicFixture(
+        133533, "a50de786e9d2ad6623c2929143c0e1c163d2aee77e2fd3f677c2a0a4089da56d", "audio/mpeg"
+    ),
+    "jfk.mp4": PublicFixture(
+        98499, "b67e593dbc28ee702613ad362318ae5313f020234f8aa3ca73616841fbaa4455", "audio/mp4"
+    ),
+    "jfk.m4a": PublicFixture(
+        98479, "7928bc013b1a049153566a40116b62546d68534a006cba0973f8e222accdcb1b", "audio/mp4"
+    ),
+    "jfk.ogg": PublicFixture(
+        54629, "bcf5ea9dbd0c51b2762144b30536ffdab95f10dfb10cbf4db74ada0639de8482", "audio/ogg"
+    ),
+    "jfk-opus.ogg": PublicFixture(
+        91296, "fd5c2a62821cc88bf77ad9a0f7f5e644fe558d3d5537cd6665d088c5888cf66f", "audio/ogg"
+    ),
+    "jfk.webm": PublicFixture(
+        94707, "0e8ad03325894c7a0ff4d66b0f3e7aff5d2cf9932bbc4c603729439335cf1ac7", "audio/webm"
+    ),
+    "jfk.flac": PublicFixture(
+        203269, "448d17921a7f352519d3d73194fa72bfaf58189ba1749e9caf5c987b3cc11557", "audio/flac"
+    ),
+}
 
 
 def _base_url(value: str) -> str:
@@ -75,14 +118,21 @@ def probe(
     for name in ("openai", "httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.CRITICAL + 1)
     with _deadline(timeout_seconds):
+        fixture_name = audio.name
+        # Preserve the original WAV CLI's alternate-basename support. Its complete
+        # bytes still have to match the one pinned WAV; no arbitrary audio is admitted.
+        if fixture_name not in PUBLIC_FIXTURES and audio.suffix.lower() == ".wav":
+            fixture_name = "jfk.wav"
+        fixture = PUBLIC_FIXTURES.get(fixture_name)
+        if fixture is None:
+            raise ValueError("An approved pinned public JFK fixture is required")
         with audio.open("rb") as source:
-            payload = source.read(JFK_BYTES + 1)
+            payload = source.read(fixture.size_bytes + 1)
         if (
-            len(payload) != JFK_BYTES
-            or audio.suffix.lower() != ".wav"
-            or hashlib.sha256(payload).hexdigest() != JFK_SHA256
+            len(payload) != fixture.size_bytes
+            or hashlib.sha256(payload).hexdigest() != fixture.sha256
         ):
-            raise ValueError("The pinned public JFK WAV is required")
+            raise ValueError("The pinned public fixture size or checksum does not match")
         with OpenAI(
             api_key="unused-local-test",
             base_url=base_url,
@@ -93,14 +143,14 @@ def probe(
             text: object
             if response_format == "text":
                 text = client.audio.transcriptions.create(
-                    file=(audio.name, payload, "audio/wav"),
+                    file=(audio.name, payload, fixture.media_type),
                     model="base",
                     language="en",
                     response_format="text",
                 )
             else:
                 result = client.audio.transcriptions.create(
-                    file=(audio.name, payload, "audio/wav"),
+                    file=(audio.name, payload, fixture.media_type),
                     model="base",
                     language="en",
                     response_format="json",
@@ -113,7 +163,10 @@ def probe(
             "sdk": "openai-python",
             "sdk_version": version("openai"),
             "response_format": response_format,
-            "fixture_sha256": JFK_SHA256,
+            "fixture_name": fixture_name,
+            "fixture_sha256": fixture.sha256,
+            "fixture_bytes": len(payload),
+            "fixture_media_type": fixture.media_type,
             "transcript_characters": len(text),
             "transcript_sha256": hashlib.sha256(text.encode()).hexdigest(),
             "qualification": "not_established",
@@ -123,7 +176,9 @@ def probe(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True, help="Explicit loopback API URL ending in /v1")
-    parser.add_argument("--audio", type=Path, required=True, help="Pinned public JFK WAV")
+    parser.add_argument(
+        "--audio", type=Path, required=True, help="Approved pinned public JFK audio fixture"
+    )
     parser.add_argument("--response-format", choices=("json", "text"), default="json")
     parser.add_argument("--timeout-seconds", type=float, default=120.0)
     args = parser.parse_args(argv)

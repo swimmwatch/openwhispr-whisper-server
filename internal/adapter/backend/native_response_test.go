@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"math"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -127,7 +130,16 @@ func TestNativeResponseValidation(t *testing.T) {
 				}
 				for key, expected := range expectedFields {
 					values := r.MultipartForm.Value[key]
-					if len(values) != 1 || values[0] != expected {
+					if len(values) != 1 {
+						t.Errorf("unexpected native field count %q", key)
+						continue
+					}
+					if key == "temperature" {
+						value, err := strconv.ParseFloat(values[0], 32)
+						if err != nil || value != 0.25 {
+							t.Error("native temperature changed", err)
+						}
+					} else if values[0] != expected {
 						t.Errorf("unexpected native field %q", key)
 					}
 				}
@@ -182,6 +194,62 @@ func TestNativeResponseValidation(t *testing.T) {
 				if result.Text != "" {
 					t.Fatal("failed native reply returned transcript")
 				}
+			}
+		})
+	}
+}
+
+func TestNativeTemperaturePrecision(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		temperature float64
+		want        float64
+	}{
+		{"zero", 0, 0},
+		{"smallest-float64", math.SmallestNonzeroFloat64, 0},
+		{"underflow", 1e-100, 0},
+		{"subnormal", 1e-40, float64(float32(1e-40))},
+		{"smallest-float32", math.SmallestNonzeroFloat32, math.SmallestNonzeroFloat32},
+		{"largest-subnormal", float64(math.Float32frombits(0x007fffff)), float64(math.Float32frombits(0x007fffff))},
+		{"smallest-normal", 0x1p-126, 0x1p-126},
+		{"fraction", 0.1, float64(float32(0.1))},
+		{"one", 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			submitted := make(chan string, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseMultipartForm(1 << 20); err != nil {
+					t.Error("cannot read native multipart", err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				defer r.MultipartForm.RemoveAll()
+				submitted <- r.FormValue("temperature")
+				_, _ = io.WriteString(w, `{"text":"fixture transcript"}`)
+			}))
+			defer server.Close()
+			opts, _, _ := supervisorOptions(t)
+			opts.NativePort = server.Listener.Addr().(*net.TCPAddr).Port
+			s, err := New(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.transport.CloseIdleConnections()
+			wave := wavFixture()
+			result, err := s.callNative(&operation{ctx: context.Background()}, Request{
+				Audio: bytes.NewReader(wave), Size: int64(len(wave)),
+				Fields: domain.InferenceFields{Language: "en", Temperature: tc.temperature},
+			})
+			if err != nil || result.Text != "fixture transcript" {
+				t.Fatalf("valid temperature failed native dispatch: result=%+v error=%v", result, err)
+			}
+			// Native std::stof can reject inexact subnormal decimal input. The
+			// submitted numeric value must already equal its native float32 value,
+			// rather than relying on an underflowing conversion in the native server.
+			value := <-submitted
+			got, ok := new(big.Rat).SetString(value)
+			if !ok || got.Cmp(new(big.Rat).SetFloat64(tc.want)) != 0 {
+				t.Fatalf("native temperature=%q, want exact float32 value %g", value, tc.want)
 			}
 		})
 	}
@@ -315,7 +383,7 @@ func TestInvalidSupervisorOptionsHaveNoSideEffects(t *testing.T) {
 		{
 			name: "invalid-audio-bound",
 			mutate: func(o *Options) {
-				o.MaxWAVBytes = canonicalWAVMinimumBytes - 1
+				o.MaxWAVBytes = 45 // One byte short of a canonical one-frame WAV.
 			},
 		},
 		{

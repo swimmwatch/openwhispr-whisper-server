@@ -38,11 +38,20 @@ func TestModelMetadata(t *testing.T) {
 		}
 	}
 
-	for _, offset := range []int{0, 4, 8, 28, 44} {
+	for offset := 0; offset < 48; offset += 4 {
+		for _, value := range []uint32{0x80000000, 0xffffffff} {
+			data := modelBytes(51865)
+			binary.LittleEndian.PutUint32(data[offset:], value)
+			if _, err := ReadMetadata(context.Background(), bytes.NewReader(data)); err == nil {
+				t.Fatalf("accepted invalid header parameter %x at %d", value, offset)
+			}
+		}
+	}
+	for offset := 4; offset < 44; offset += 4 {
 		data := modelBytes(51865)
-		binary.LittleEndian.PutUint32(data[offset:], 0xffffffff)
+		binary.LittleEndian.PutUint32(data[offset:], 0)
 		if _, err := ReadMetadata(context.Background(), bytes.NewReader(data)); err == nil {
-			t.Fatalf("accepted invalid header at %d", offset)
+			t.Fatalf("accepted zero model dimension at %d", offset)
 		}
 	}
 

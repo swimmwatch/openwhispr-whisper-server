@@ -18,6 +18,7 @@ import (
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/backend"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/httpapi"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/models"
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/logging"
@@ -28,9 +29,6 @@ const (
 	idleTimeout       = 30 * time.Second
 	maxHeaderBytes    = 64 << 10
 	httpShutdownLimit = 5 * time.Second
-	wavHeaderBytes    = 44
-	wavBytesPerSecond = 32000
-	maxRIFFFileBytes  = int64(math.MaxUint32) + 8
 )
 
 type runtimeOptions struct {
@@ -99,7 +97,7 @@ func run(ctx context.Context, args, environ []string, out io.Writer, runtime run
 		return err
 	}
 
-	waveBytes := maxWAVBytes(settings.Limits.DecodedSeconds)
+	waveBytes := wav.MaxFileBytes(settings.Limits.DecodedSeconds)
 	options := backend.Options{
 		NativeCommand:    runtime.nativeCommand,
 		GPUCommand:       runtime.gpuCommand,
@@ -201,12 +199,4 @@ func shutdownBudget(drain, cleanup time.Duration) time.Duration {
 		total += part
 	}
 	return total
-}
-
-// Classic RIFF/WAV has a 32-bit size field, even with a larger duration budget.
-func maxWAVBytes(decodedSeconds int) int64 {
-	if int64(decodedSeconds) > (maxRIFFFileBytes-wavHeaderBytes)/wavBytesPerSecond {
-		return maxRIFFFileBytes
-	}
-	return wavHeaderBytes + int64(decodedSeconds)*wavBytesPerSecond
 }

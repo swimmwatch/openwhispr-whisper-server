@@ -3,7 +3,9 @@
 `Load(args, environ)` returns owned `Settings` without opening a listener,
 starting a process or inspecting model files. Command assembly owns startup;
 model provisioning and capability checks are implemented by the separate
-`internal/adapter/models` adapter. Startup wiring remains a later packet.
+`internal/adapter/models` adapter. Both commands use this loader; only backend
+assembly provisions artifacts, while API assembly computes compatibility without
+opening model files.
 
 Precedence is explicit CLI flags > environment > JSON file > embedded defaults.
 Only supplied flags override values. `--config=/path/settings.json` selects the
@@ -23,10 +25,13 @@ reject duplicates. `json.go` performs the required JSON token precheck.
 `validation.go` checks typed source values before merging. Koanf/mapstructure
 owns structural decoding, native JSON-number conversion, exact key matching and
 unknown-key rejection; the loader does not implement a recursive type decoder.
+Validator aliases share positive duration and finite-rate bounds between complete
+settings and selected partial fields. Model/source checks remain explicit:
+selecting the catalog collection does not select its nested model fields.
 
 The embedded [defaults.json](defaults.json) implements the canonical defaults
 in [core contracts](../../../docs/specs/gpu-whisper-server/core/contracts.yaml).
-The contributor checker verifies parity. Do not maintain a second defaults
+Keep those defaults aligned with the contract; do not maintain a second defaults
 table here.
 
 ## Logging, rate limit and proxy bindings
@@ -107,8 +112,10 @@ Download sources require HTTPS without URL credentials, SHA256 and optional
 positive `expected_bytes`. `models.Provision(ctx, opts, client)` copies its
 collections and uses one total deadline for sequential download-set preparation
 and served-artifact verification. Parent cancellation or an earlier parent deadline
-also applies to locks, streams and retry delays. Only the served `Artifact` is
-returned; extra verified downloads remain cached.
+also applies to locks, streams and retry delays. Only the served
+`domain.ModelArtifact` is returned; extra verified downloads remain cached.
+Its `domain.ModelMetadata` is a plain capability record. Provisioning and native
+serving share these domain records without coupling the backend to the loader.
 
 The Linux cache layout is:
 

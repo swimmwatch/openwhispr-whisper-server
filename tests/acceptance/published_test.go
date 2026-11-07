@@ -130,9 +130,21 @@ func newSelectedDockerTarget(selection acceptanceSelection, opts DockerOptions) 
 var errPublishedBinding = errors.New("published target does not match the selected immutable artifacts or execution boundaries")
 
 func verifyPublishedContainers(states map[string]DockerInspection, references, imageIDs map[string]string) error {
+	if err := verifyPublishedContainerIdentities(states, references, imageIDs); err != nil {
+		return err
+	}
+	for _, role := range []string{"api", "backend"} {
+		if !states[role].Running {
+			return errPublishedBinding
+		}
+	}
+	return nil
+}
+
+func verifyPublishedContainerIdentities(states map[string]DockerInspection, references, imageIDs map[string]string) error {
 	for _, role := range []string{"api", "backend"} {
 		state := states[role]
-		if !state.Running || !state.ReadonlyRootFS || state.User != "10001:10001" || state.Reference != references[role] || state.Image != imageIDs[role] || !validAcceptanceIdentity(state.Image, 32, "sha256:") {
+		if !state.ReadonlyRootFS || state.User != "10001:10001" || state.Reference != references[role] || state.Image != imageIDs[role] || !validAcceptanceIdentity(state.Image, 32, "sha256:") {
 			return errPublishedBinding
 		}
 		if role == "api" && len(state.DeviceRequests) != 0 || role == "backend" && (len(state.DeviceRequests) != 1 || len(state.PortBindings) != 0) {
@@ -161,6 +173,7 @@ type publishedContainerBinding struct {
 	ContainerID   string `json:"container_id"`
 	EngineImageID string `json:"engine_image_id"`
 	Reference     string `json:"reference"`
+	Running       bool   `json:"running"`
 }
 
 type publishedBinding struct {
@@ -177,7 +190,7 @@ type publishedBinding struct {
 	Containers          map[string]publishedContainerBinding `json:"containers"`
 }
 
-func observePublishedBinding(ctx context.Context, e *acceptanceEnvironment) (publishedBinding, error) {
+func observePublishedStartupBinding(ctx context.Context, e *acceptanceEnvironment) (publishedBinding, error) {
 	var binding publishedBinding
 	if e.selection.Scope != publishedAcceptanceScope || e.selection.Published == nil {
 		return binding, errPublishedBinding
@@ -192,7 +205,7 @@ func observePublishedBinding(ctx context.Context, e *acceptanceEnvironment) (pub
 		}
 		states[role] = state
 	}
-	if err := verifyPublishedContainers(states, references, ids); err != nil {
+	if err := verifyPublishedContainerIdentities(states, references, ids); err != nil {
 		return binding, err
 	}
 	data, err := readBoundedAcceptanceJSON(e.config)
@@ -206,7 +219,20 @@ func observePublishedBinding(ctx context.Context, e *acceptanceEnvironment) (pub
 	}
 	binding = publishedBinding{ObservedAt: time.Now().UTC(), TestName: e.testName, Scope: publishedAcceptanceScope, Qualification: "not_established", Candidate: *e.selection.Published, InventorySHA256: e.selection.InventorySHA256, SelectionSHA256: e.selection.SelectionSHA256, ConfigurationSHA256: acceptanceSHA256(data), AudioSHA256: strings.TrimPrefix(acceptanceSHA256(e.audio), "sha256:"), Settings: e.settings, Containers: map[string]publishedContainerBinding{}}
 	for role, state := range states {
-		binding.Containers[role] = publishedContainerBinding{ContainerID: state.ID, EngineImageID: state.Image, Reference: state.Reference}
+		binding.Containers[role] = publishedContainerBinding{ContainerID: state.ID, EngineImageID: state.Image, Reference: state.Reference, Running: state.Running}
+	}
+	return binding, nil
+}
+
+func observePublishedBinding(ctx context.Context, e *acceptanceEnvironment) (publishedBinding, error) {
+	binding, err := observePublishedStartupBinding(ctx, e)
+	if err != nil {
+		return binding, err
+	}
+	for _, role := range []string{"api", "backend"} {
+		if !binding.Containers[role].Running {
+			return publishedBinding{}, errPublishedBinding
+		}
 	}
 	return binding, nil
 }
@@ -216,6 +242,18 @@ func recordPublishedBinding(ctx context.Context, e *acceptanceEnvironment) error
 	if err != nil {
 		return err
 	}
+	return retainPublishedBinding(e, binding)
+}
+
+func recordPublishedStartupBinding(ctx context.Context, e *acceptanceEnvironment) error {
+	binding, err := observePublishedStartupBinding(ctx, e)
+	if err != nil {
+		return err
+	}
+	return retainPublishedBinding(e, binding)
+}
+
+func retainPublishedBinding(e *acceptanceEnvironment, binding publishedBinding) error {
 	data, err := json.MarshalIndent(binding, "", "  ")
 	if err != nil {
 		return errors.New("cannot encode published candidate binding")
@@ -272,10 +310,18 @@ func TestResidentSuite(t *testing.T) {
 	for _, mode := range []string{"graceful_term", "forced_kill"} {
 		t.Run("active_api_shutdown/"+mode, func(t *testing.T) { runActiveAPIShutdown(t, openPublishedEnvironment(t, nil), mode) })
 	}
+	t.Run("cache_and_models", func(t *testing.T) { runCacheAndModels(t, openPublishedEnvironment(t, nil)) })
+	t.Run("assertion_sensitivity", runResidentSensitivity)
+	t.Run("performance_components", func(t *testing.T) { runResidentPerformanceComponents(t, openPublishedEnvironment(t, nil)) })
+	t.Run("terminal_observations", func(t *testing.T) {
+		e := openPublishedEnvironment(t, nil)
+		longest := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
+		runResidentTerminalObservations(t, e, longest)
+	})
 	t.Run("model_observer", func(t *testing.T) { runModelObserver(t, openPublishedEnvironment(t, nil)) })
 	t.Run("gpu_unavailable", func(t *testing.T) { runGPUUnavailable(t, openPublishedEnvironment(t, nil)) })
 	t.Run("required_unimplemented_gates", func(t *testing.T) {
-		t.Fatal("UNIMPLEMENTED full P07 gates: exact-candidate counted HTTPS/cache/model recipes without a CA derivative; configured idle and retention/failure memory envelope; remaining reload/raw-output/overlap PROVE mutations; concurrent measurements and feasible direct-native comparison; second-registry runtime recipe")
+		t.Fatal("P07 qualification remains incomplete: calibrated steady/failure memory evidence is not established. Desktop/Electron execution is not a V1 qualification gate under the approved REQ-012 amendment. Passing selected server slices does not qualify the candidate.")
 	})
 }
 

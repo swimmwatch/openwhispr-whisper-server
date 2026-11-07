@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
 )
 
@@ -54,7 +55,7 @@ func TestPreparedArtifactExpectedSize(t *testing.T) {
 				}
 			} else {
 				requireFailure(t, err)
-				if !errors.Is(err, errIntegrity) || artifact != (Artifact{}) {
+				if !errors.Is(err, errIntegrity) || artifact != (domain.ModelArtifact{}) {
 					t.Fatalf("size mismatch returned an artifact or lost integrity cause: %+v %v", artifact, err)
 				}
 			}

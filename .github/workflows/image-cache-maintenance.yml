@@ -1,0 +1,89 @@
+name: Build cache maintenance
+
+'on':
+  schedule:
+  - cron: '23 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete eligible cache versions only after reviewing a dry-run artifact
+        type: boolean
+        default: false
+        required: false
+
+permissions: {}
+
+# Share the main cache writer lock; do not overlap promotion and retention.
+concurrency:
+  group: whisper-image-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: >-
+      github.repository == 'swimmwatch/openwhispr-whisper-server' &&
+      github.event.repository.full_name == github.repository &&
+      github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && !inputs.apply))
+    runs-on: &runner ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+    - uses: &checkout actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: &ci_config ./.github/actions/ci-config
+    - uses: &setup_python ./.github/actions/setup-python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+    - name: Select retention candidates without deleting
+      env: &retention_context
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        GITHUB_EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+        GITHUB_REPOSITORY_OWNER_TYPE: ${{ github.event.repository.owner.type }}
+      run: |
+        umask 077
+        uv run --no-sync --no-dev python tools/build_cache.py retain --output "$RUNNER_TEMP/cache-retention.json"
+    - uses: &upload actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: cache-retention-plan
+        path: ${{ runner.temp }}/cache-retention.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}
+
+  apply:
+    if: >-
+      github.repository == 'swimmwatch/openwhispr-whisper-server' &&
+      github.event.repository.full_name == github.repository &&
+      github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main' &&
+      github.event_name == 'workflow_dispatch' && inputs.apply
+    runs-on: *runner
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - uses: *checkout
+      with:
+        persist-credentials: false
+    - uses: *ci_config
+    - uses: *setup_python
+      with:
+        cache: 'true'
+        dev-dependencies: 'false'
+    - name: Recompute and apply bounded retention after operator validation
+      env: *retention_context
+      run: |
+        umask 077
+        uv run --no-sync --no-dev python tools/build_cache.py retain --apply --output "$RUNNER_TEMP/cache-retention.json"
+    - uses: *upload
+      with:
+        name: cache-retention-applied
+        path: ${{ runner.temp }}/cache-retention.json
+        if-no-files-found: error
+        retention-days: ${{ env.CI_ARTIFACT_RETENTION_DAYS }}

@@ -33,7 +33,12 @@ func (r requestIdentityTransport) CloseIdleConnections() {
 
 func identifiedLocalClient(t *testing.T, e *acceptanceEnvironment, id string) *PublicClient {
 	t.Helper()
-	client, err := NewPublicClient(e.address, time.Duration(e.settings.Timeouts.OperationSeconds+e.settings.Timeouts.CleanupSeconds+5)*time.Second, 1<<20)
+	return identifiedPublicClient(t, e.address, time.Duration(e.settings.Timeouts.OperationSeconds+e.settings.Timeouts.CleanupSeconds+5)*time.Second, id)
+}
+
+func identifiedPublicClient(t *testing.T, address string, timeout time.Duration, id string) *PublicClient {
+	t.Helper()
+	client, err := NewPublicClient(address, timeout, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,9 +69,14 @@ func observedQueueIDs(logs []byte, event, prefix string) []string {
 
 func waitLocalQueueEvent(t *testing.T, e *acceptanceEnvironment, event, id string) {
 	t.Helper()
+	waitQueueEvent(t, e.ctx, func(ctx context.Context) ([]byte, error) { return e.target.Logs(ctx, "api") }, event, id)
+}
+
+func waitQueueEvent(t *testing.T, ctx context.Context, observe func(context.Context) ([]byte, error), event, id string) {
+	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		logs, err := e.target.Logs(e.ctx, "api")
+		logs, err := observe(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +89,7 @@ func waitLocalQueueEvent(t *testing.T, e *acceptanceEnvironment, event, id strin
 			t.Fatal("controlled queue operation did not reach its required phase")
 		}
 		select {
-		case <-e.ctx.Done():
+		case <-ctx.Done():
 			t.Fatal("queue phase cancelled")
 		case <-time.After(25 * time.Millisecond):
 		}
@@ -93,10 +103,13 @@ type asyncPublicReply struct {
 
 func submitIdentified(t *testing.T, e *acceptanceEnvironment, ctx context.Context, id string, audio []byte, filename string) <-chan asyncPublicReply {
 	t.Helper()
-	client := identifiedLocalClient(t, e, id)
+	return submitPublicRequest(ctx, identifiedLocalClient(t, e, id), e.settings.Models.Served, audio, filename)
+}
+
+func submitPublicRequest(ctx context.Context, client *PublicClient, model string, audio []byte, filename string) <-chan asyncPublicReply {
 	done := make(chan asyncPublicReply, 1)
 	go func() {
-		reply, err := client.Transcribe(ctx, audio, filename, []FormField{{"model", e.settings.Models.Served}, {"language", "en"}, {"temperature", "0"}})
+		reply, err := client.Transcribe(ctx, audio, filename, []FormField{{"model", model}, {"language", "en"}, {"temperature", "0"}})
 		done <- asyncPublicReply{reply, err}
 	}()
 	return done
@@ -106,43 +119,92 @@ func TestLocalInputBoundsAndIsolation(t *testing.T) {
 	runInputBoundsAndIsolation(t, openLocalEnvironment(t, nil))
 }
 
+type inputBoundsWork struct {
+	ctx         context.Context
+	client      *PublicClient
+	model       string
+	audio       []byte
+	fixtures    string
+	audioBytes  int64
+	promptBytes int
+	privacy     func(context.Context, string) error
+	bracket     func(func() bool) error
+}
+
 func runInputBoundsAndIsolation(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
-	t.Run("exact_file_cap_and_one_byte_excess", func(t *testing.T) {
-		cap := e.settings.Limits.AudioBytes
-		if int64(len(e.audio))+8 > cap {
+	work := inputBoundsWork{ctx: e.ctx, client: e.client, model: e.settings.Models.Served, audio: e.audio, fixtures: e.selection.FixtureDirectory, audioBytes: e.settings.Limits.AudioBytes, promptBytes: e.settings.Limits.PromptBytes}
+	work.privacy = func(ctx context.Context, marker string) error {
+		for _, role := range []string{"api", "backend"} {
+			logs, err := e.target.Logs(ctx, role)
+			if err != nil || checkResidentLogPrivacy(logs, marker) != nil {
+				return errors.New("privacy log observation unavailable or violated")
+			}
+			id, err := e.target.container(ctx, role)
+			if err != nil {
+				return errors.New("privacy container unavailable")
+			}
+			const fileProbe = `pattern=$1; shift; if grep -rFq -- "$pattern" "$@"; then printf leak; else code=$?; [ "$code" -eq 1 ] || exit "$code"; printf clean; fi`
+			args := []string{"exec", id, "sh", "-ec", fileProbe, "p07-privacy", marker, "/tmp"}
+			if role == "backend" {
+				args = append(args, e.settings.Storage.CacheDir)
+			}
+			result, err := e.target.run(ctx, "owned runtime file marker observation", false, args...)
+			if err != nil || string(result) != "clean" {
+				return errors.New("privacy file observation unavailable or violated")
+			}
+		}
+		return nil
+	}
+	runInputBoundsWork(t, work)
+}
+
+func runInputBoundsWork(t *testing.T, work inputBoundsWork) {
+	t.Helper()
+	runCase := func(name string, run func(*testing.T)) {
+		if work.bracket == nil {
+			t.Run(name, run)
+			return
+		}
+		if err := work.bracket(func() bool { return t.Run(name, run) }); err != nil {
+			t.Fatal("input workload candidate bracket failed")
+		}
+	}
+	runCase("exact_file_cap_and_one_byte_excess", func(t *testing.T) {
+		cap := work.audioBytes
+		if len(work.audio) < 8 || int64(len(work.audio))+8 > cap {
 			t.Fatal("public WAV fixture cannot be padded to the selected cap")
 		}
 		padded := make([]byte, int(cap))
-		copy(padded, e.audio)
+		copy(padded, work.audio)
 		binary.LittleEndian.PutUint32(padded[4:8], uint32(cap-8))
-		copy(padded[len(e.audio):], "JUNK")
-		binary.LittleEndian.PutUint32(padded[len(e.audio)+4:len(e.audio)+8], uint32(cap-int64(len(e.audio))-8))
-		reply, err := e.client.Transcribe(e.ctx, padded, "exact.wav", []FormField{{"model", "base"}, {"language", "en"}})
+		copy(padded[len(work.audio):], "JUNK")
+		binary.LittleEndian.PutUint32(padded[len(work.audio)+4:len(work.audio)+8], uint32(cap-int64(len(work.audio))-8))
+		reply, err := work.client.Transcribe(work.ctx, padded, "exact.wav", []FormField{{"model", work.model}, {"language", "en"}})
 		if err != nil || reply.Status != http.StatusOK {
 			t.Fatal("valid WAV at the exact selected file cap was rejected")
 		}
 		excess := append(padded, 0)
-		reply, err = e.client.Transcribe(e.ctx, excess, "excess.wav", []FormField{{"model", "base"}})
+		reply, err = work.client.Transcribe(work.ctx, excess, "excess.wav", []FormField{{"model", work.model}})
 		if err != nil || reply.Status != http.StatusRequestEntityTooLarge || reply.ErrorCode != "payload_too_large" {
 			t.Fatal("one-byte excess did not fail the actual upload boundary")
 		}
 	})
-	t.Run("decoded_duration_and_prompt_limits", func(t *testing.T) {
-		overlong := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-901.flac"), e.settings.Limits.AudioBytes)
-		reply, err := e.client.Transcribe(e.ctx, overlong, "overlong.flac", []FormField{{"model", "base"}})
+	runCase("decoded_duration_and_prompt_limits", func(t *testing.T) {
+		overlong := readLocalAudio(t, filepath.Join(work.fixtures, "jfk-901.flac"), work.audioBytes)
+		reply, err := work.client.Transcribe(work.ctx, overlong, "overlong.flac", []FormField{{"model", work.model}})
 		if err != nil || reply.Status != http.StatusBadRequest || reply.ErrorCode != "audio_duration_limit" {
 			t.Fatal("verified 901-second lossless input did not reject without truncation")
 		}
-		reply, err = e.client.Transcribe(e.ctx, e.audio, "jfk.wav", []FormField{{"model", "base"}, {"prompt", strings.Repeat("p", e.settings.Limits.PromptBytes+1)}})
+		reply, err = work.client.Transcribe(work.ctx, work.audio, "jfk.wav", []FormField{{"model", work.model}, {"prompt", strings.Repeat("p", work.promptBytes+1)}})
 		if err != nil || reply.Status != http.StatusBadRequest || reply.ErrorCode != "invalid_request" {
 			t.Fatal("oversized prompt did not fail its actual byte limit")
 		}
 	})
-	t.Run("distinct_recordings_and_prompt_reset", func(t *testing.T) {
+	runCase("distinct_recordings_and_prompt_reset", func(t *testing.T) {
 		for _, name := range []string{"jfk-first.wav", "jfk-last.wav", "jfk-first.wav"} {
-			audio := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, name), e.settings.Limits.AudioBytes)
-			reply, err := e.client.Transcribe(e.ctx, audio, name, []FormField{{"model", "base"}, {"language", "en"}, {"temperature", "0"}})
+			audio := readLocalAudio(t, filepath.Join(work.fixtures, name), work.audioBytes)
+			reply, err := work.client.Transcribe(work.ctx, audio, name, []FormField{{"model", work.model}, {"language", "en"}, {"temperature", "0"}})
 			if err != nil || reply.Status != http.StatusOK || reply.Text == "" {
 				t.Fatal("distinct recording did not transcribe")
 			}
@@ -153,29 +215,13 @@ func runInputBoundsAndIsolation(t *testing.T, e *acceptanceEnvironment) {
 		}
 		marker := "P07_SYNTHETIC_PRIVACY_MARKER"
 		for _, prompt := range []string{marker, ""} {
-			reply, err := e.client.Transcribe(e.ctx, e.audio, marker+".wav", []FormField{{"model", "base"}, {"prompt", prompt}, {"language", "en"}, {"temperature", "0"}})
+			reply, err := work.client.Transcribe(work.ctx, work.audio, marker+".wav", []FormField{{"model", work.model}, {"prompt", prompt}, {"language", "en"}, {"temperature", "0"}})
 			if err != nil || reply.Status != http.StatusOK {
 				t.Fatal("prompt/reset control failed")
 			}
 		}
-		for _, role := range []string{"api", "backend"} {
-			logs, err := e.target.Logs(e.ctx, role)
-			if err != nil || strings.Contains(string(logs), marker) {
-				t.Fatal("privacy marker appeared in emitted logs or log observation failed")
-			}
-			id, err := e.target.container(e.ctx, role)
-			if err != nil {
-				t.Fatal(err)
-			}
-			const fileProbe = `pattern=$1; shift; if grep -rFq -- "$pattern" "$@"; then printf leak; else code=$?; [ "$code" -eq 1 ] || exit "$code"; printf clean; fi`
-			args := []string{"exec", id, "sh", "-ec", fileProbe, "p07-privacy", marker, "/tmp"}
-			if role == "backend" {
-				args = append(args, e.settings.Storage.CacheDir)
-			}
-			result, err := e.target.run(e.ctx, "owned runtime file marker observation", false, args...)
-			if err != nil || string(result) != "clean" {
-				t.Fatal("privacy marker appeared in owned runtime files or file observation is unavailable")
-			}
+		if work.privacy == nil || work.privacy(work.ctx, marker) != nil {
+			t.Fatal("privacy observation unavailable or violated")
 		}
 	})
 }
@@ -186,63 +232,18 @@ func TestLocalFIFOAndQueuedCancellation(t *testing.T) {
 
 func runFIFOAndQueuedCancellation(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
-	longest := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
-	ctx, cancel := context.WithCancel(e.ctx)
-	defer cancel()
-	active := submitIdentified(t, e, ctx, "fifo-active", longest, "longest.flac")
-	waitLocalQueueEvent(t, e, "queue_dispatched", "fifo-active")
-	second := submitIdentified(t, e, ctx, "fifo-second", e.audio, "jfk.wav")
-	waitLocalQueueEvent(t, e, "queue_admitted", "fifo-second")
-	third := submitIdentified(t, e, ctx, "fifo-third", e.audio, "jfk.wav")
-	waitLocalQueueEvent(t, e, "queue_admitted", "fifo-third")
-	overflow := identifiedLocalClient(t, e, "fifo-overflow")
-	reply, err := overflow.Transcribe(e.ctx, e.audio, "jfk.wav", []FormField{{"model", "base"}})
-	if err != nil || reply.Status != http.StatusTooManyRequests || reply.ErrorCode != "queue_full" {
-		t.Fatal("declared waiting-capacity overflow did not exercise queue_full")
-	}
-	for _, done := range []<-chan asyncPublicReply{active, second, third} {
-		select {
-		case result := <-done:
-			if result.err != nil || result.reply.Status != http.StatusOK {
-				t.Fatal("admitted FIFO request did not complete")
+	runQueueWorkload(t, queueWorkload{
+		ctx: e.ctx, model: e.settings.Models.Served, short: e.audio,
+		cleanupTimeout: time.Duration(e.settings.Timeouts.CleanupSeconds) * time.Second,
+		long:           readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes),
+		client:         func(t *testing.T, id string) *PublicClient { return identifiedLocalClient(t, e, id) },
+		logs:           func(ctx context.Context) ([]byte, error) { return e.target.Logs(ctx, "api") },
+		released: func(ctx context.Context) error {
+			state, err := e.target.Observe(ctx)
+			if err != nil {
+				return err
 			}
-		case <-ctx.Done():
-			t.Fatal("FIFO workload cancelled")
-		}
-	}
-	logs, err := e.target.Logs(e.ctx, "api")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids := observedQueueIDs(logs, "queue_dispatched", "fifo-")
-	if len(ids) != 3 || ids[0] != "fifo-active" || ids[1] != "fifo-second" || ids[2] != "fifo-third" {
-		t.Fatal("actual private-dispatch order differs from admitted FIFO order or overflow dispatched")
-	}
-	// A queued disconnect must remove its owner, not enter native inference later.
-	active = submitIdentified(t, e, ctx, "cancel-queue-active", longest, "longest.flac")
-	waitLocalQueueEvent(t, e, "queue_dispatched", "cancel-queue-active")
-	waitingCtx, stopWaiting := context.WithCancel(ctx)
-	waiting := submitIdentified(t, e, waitingCtx, "cancel-queue-waiting", e.audio, "jfk.wav")
-	waitLocalQueueEvent(t, e, "queue_admitted", "cancel-queue-waiting")
-	stopWaiting()
-	result := <-waiting
-	if result.err == nil || !errors.Is(result.err, context.Canceled) {
-		t.Fatal("queued disconnect did not preserve cancellation")
-	}
-	if result = <-active; result.err != nil || result.reply.Status != http.StatusOK {
-		t.Fatal("queued disconnect disturbed active inference")
-	}
-	logs, err = e.target.Logs(e.ctx, "api")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range observedQueueIDs(logs, "queue_dispatched", "cancel-queue-") {
-		if id == "cancel-queue-waiting" {
-			t.Fatal("cancelled queued work entered native dispatch")
-		}
-	}
-	state, err := e.target.Observe(e.ctx)
-	if err != nil || releasedAPIResources(state) != nil {
-		t.Fatal("FIFO/cancellation retained API request resources")
-	}
+			return releasedAPIResources(state)
+		},
+	})
 }

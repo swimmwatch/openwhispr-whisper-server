@@ -131,10 +131,11 @@ func imageTests(t *testing.T) {
 	}
 }
 
-func TestBackendSecurityFixes(t *testing.T) {
-	imageTests(t)
+func requireRuntimePackages(t *testing.T, role string, packages ...string) {
+	t.Helper()
 
-	args := []string{"run", "--rm", "--runtime=runc", "--entrypoint=/bin/sh", image("backend"), "-ec", `
+	args := []string{"run", "--rm", "--runtime=runc", "--network=none", "--read-only",
+		"--env=NVIDIA_VISIBLE_DEVICES=void", "--entrypoint=/bin/sh", image(role), "-ec", `
 while [ "$#" -gt 0 ]; do
   package=$1; minimum=$2; shift 2
   installed=$(dpkg-query -W -f='${Version}' "$package")
@@ -142,14 +143,60 @@ while [ "$#" -gt 0 ]; do
     printf 'Unpatched runtime package: %s %s (minimum %s)\n' "$package" "$installed" "$minimum" >&2
     exit 1
   }
-done`, "security-check", "openssl", "3.0.13-0ubuntu3.16", "libssl3t64", "3.0.13-0ubuntu3.16"}
-	for _, name := range []string{
-		"dirmngr", "gnupg", "gnupg-utils", "gnupg2", "gpg", "gpg-agent", "gpgconf", "gpgsm", "gpgv",
-		"keyboxd",
+done`, "security-check"}
+	docker(t, append(args, packages...)...)
+}
+
+func TestBackendSecurityFixes(t *testing.T) {
+	imageTests(t)
+
+	var packages []string
+	for _, group := range []struct{ names, minimum string }{
+		{"openssl libssl3t64", "3.0.13-0ubuntu3.16"},
+		{"dirmngr gnupg gnupg-utils gnupg2 gpg gpg-agent gpgconf gpgsm gpgv keyboxd", "2.4.4-2ubuntu17.4"},
+		{"bsdutils", "1:2.39.3-9ubuntu6.6"},
+		{"libblkid1 libmount1 libsmartcols1 libuuid1 mount util-linux", "2.39.3-9ubuntu6.6"},
+		{"coreutils", "9.4-3ubuntu6.3"},
+		{"diffutils", "1:3.10-1ubuntu0.1"},
+		{"dpkg", "1.22.6ubuntu6.6"},
+		{"gzip", "1.12-1ubuntu3.2"},
+		{"libattr1", "1:2.5.2-1ubuntu0.1"},
+		{"libbz2-1.0", "1.0.8-5.1ubuntu0.1"},
+		{"libc-bin libc6", "2.39-0ubuntu8.9"},
+		{"libcap2", "1:2.66-5ubuntu2.4"},
+		{"libgcrypt20", "1.10.3-2ubuntu0.2"},
+		{"libgnutls30t64", "3.8.3-1.1ubuntu3.6"},
+		{"liblzma5", "5.6.1+really5.4.5-1ubuntu0.4"},
+		{"libncursesw6 libtinfo6 ncurses-base ncurses-bin", "6.4+20240113-1ubuntu2.2"},
+		{"libp11-kit0", "0.25.3-4ubuntu2.2"},
+		{"libpam-modules libpam-modules-bin libpam-runtime libpam0g", "1.5.3-5ubuntu5.7"},
+		{"libsqlite3-0", "3.45.1-1ubuntu2.9"},
+		{"libsystemd0 libudev1", "255.4-1ubuntu8.18"},
+		{"libtasn1-6", "4.19.0-3ubuntu0.24.04.2"},
+		{"perl-base", "5.38.2-3.2ubuntu0.6"},
+		{"sed", "4.9-2ubuntu0.24.04.1"},
+		{"tar", "1.35+dfsg-3ubuntu0.4"},
 	} {
-		args = append(args, name, "2.4.4-2ubuntu17.4")
+		for _, name := range strings.Fields(group.names) {
+			packages = append(packages, name, group.minimum)
+		}
 	}
-	docker(t, args...)
+	requireRuntimePackages(t, "backend", packages...)
+}
+
+func TestRuntimeSecurityUpdates(t *testing.T) {
+	imageTests(t)
+
+	for _, role := range []string{"api", "backend"} {
+		t.Run(role, func(t *testing.T) {
+			requireRuntimePackages(t, role,
+				"apt", "2.8.4ubuntu0.1",
+				"libapt-pkg6.0t64", "2.8.4ubuntu0.1",
+				"libbrotli1", "1.1.0-2ubuntu0.1",
+				"libpcre2-8-0", "10.42-4ubuntu2.2",
+				"zlib1g", "1:1.3.dfsg-3.1ubuntu2.3")
+		})
+	}
 }
 
 func image(role string) string {

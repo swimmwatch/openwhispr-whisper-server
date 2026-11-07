@@ -5,7 +5,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,6 +15,7 @@ if __package__ in (None, ""):
 from tools.release.storage import immutable_copy as immutable_copy
 from tools.release.storage import merge_index as merge_index
 from tools.release.validation import digest as digest
+from tools.release.validation import fresh as fresh
 from tools.release.validation import require as require
 from tools.release.validation import source as source
 
@@ -29,17 +30,6 @@ CHANNELS = (
 )
 GPU_TARGETS = {"docker-rtx5070ti", "homelab-rtx2060"}
 VERSION_CORE = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
-
-
-def fresh(value: object, now: datetime) -> None:
-    try:
-        instant = datetime.fromisoformat(cast(str, value).replace("Z", "+00:00"))
-        require(
-            instant.tzinfo is not None and timedelta(0) <= now - instant <= timedelta(hours=24),
-            "Stale or future security evidence",
-        )
-    except (AttributeError, TypeError, ValueError) as error:
-        raise ValueError("Stale or invalid security timestamp") from error
 
 
 def validate(

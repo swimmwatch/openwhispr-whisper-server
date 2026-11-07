@@ -87,7 +87,7 @@ func TestAPIAssembly(t *testing.T) {
 		defer file.Close()
 
 		data, _ := io.ReadAll(file)
-		if len(data) != 3244 ||
+		if len(data) != 32044 ||
 			string(data[:4]) != "RIFF" ||
 			binary.LittleEndian.Uint32(data[24:]) != 16000 ||
 			r.FormValue("language") != "ru" ||
@@ -129,6 +129,7 @@ func TestAPIAssembly(t *testing.T) {
 		"--shutdown-seconds=1",
 		"--cleanup-seconds=1",
 		"--operation-seconds=" + strconv.Itoa(int(transcriptionTimeout/time.Second)),
+		"--decoded-seconds=1",
 		"--log-level=debug",
 		"--rate-limit-burst=1",
 		"--rate-limit-requests-per-second=0.01",
@@ -201,7 +202,8 @@ func TestAPIAssembly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wave := make([]byte, 1644)
+	// Exactly one second at 8 kHz must normalize to the configured 16 kHz cap.
+	wave := make([]byte, 16044)
 	copy(wave, "RIFF")
 	binary.LittleEndian.PutUint32(wave[4:], uint32(len(wave)-8))
 	copy(wave[8:], "WAVEfmt ")

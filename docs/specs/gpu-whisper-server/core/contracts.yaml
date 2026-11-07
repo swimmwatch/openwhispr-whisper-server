@@ -7,7 +7,7 @@ runtime:
   api:
     language: Go
     framework: github.com/labstack/echo/v5
-    framework_version: v5.4.0
+    framework_version: v5.4.1
     toolchain_baseline: 1.27.3
     minimum_go: 1.26.0
   backend:
@@ -34,11 +34,11 @@ go_foundation:
   requirement_ids: [REQ-003, REQ-019, REQ-029, REQ-030, REQ-031]
   packages:
     logger: Standard-library log/slog JSONHandler; one injected logger per component, context-bound request fields.
-    middleware: Echo v5.4.0 RequestID, RequestLogger, Recover and RateLimiter; configure safe adapters rather than default content/error logging.
+    middleware: Echo v5.4.1 RequestID, RequestLogger, Recover and RateLimiter; configure safe adapters rather than default content/error logging.
     configuration: github.com/knadh/koanf/v2 v2.3.8; confmap/file/env-v2/basicflag providers, verified compatible module versions at F01.
     validation: github.com/go-playground/validator/v10 v10.30.5; WithRequiredStructEnabled, reusable DTO/config checks plus explicit semantic rules.
     rate_store: Echo middleware.RateLimiterStore and optional RateLimiterStoreContext; built-in RateLimiterMemoryStoreWithConfig in V1.
-  version_policy: The user selected Go 1.27.3 on 2026-10-22 to address GO-2026-6809 in the previous 1.27.2 baseline; the baseline covers validator minimum 1.26.0 and Echo minimum 1.25.0. Resolve exact provider/transitive graph and go.sum in F01; reviewed updates only.
+  version_policy: The user selected Go 1.27.3 on 2026-10-22 to address GO-2026-6809 in the previous 1.27.2 baseline and approved Echo v5.4.1 on 2026-11-07 to address GO-2026-6838, GO-2026-6839, GO-2026-6841 and GO-2026-6844. The baseline covers validator minimum 1.26.0 and Echo minimum 1.25.0. Resolve exact provider/transitive graph and go.sum in F01; reviewed updates only.
   wiring: cmd/api and cmd/backend load/validate config, initialize logging, construct adapters/application and own shutdown; no service locator or DI framework.
   boundaries:
     domain: internal/domain; plain model/request/result/error types and invariant rules, no framework/config/adapter imports.
@@ -421,7 +421,10 @@ delivery:
     coverage_limits: Custom whisper.cpp/FFmpeg/CUDA components may not be fully identified by image scanning; explicitly reconcile source/component advisory evidence instead of claiming zero vulnerabilities from an empty result.
     promotion: R01 requires current complete Security Check before publication; R02 rescans accepted immutable image digests and the stable chart package. A database-only update renews security evidence; changed executable/runtime inputs require a new RC and affected GPU acceptance.
   release:
-    states: [proposed, candidate_building, candidate_published_unqualified, candidate_qualified, stable_prepared, stable_complete, incomplete]
+    states: [proposed, candidate_building, candidate_published_unqualified, candidate_qualified, stable_prepared, stable_complete, stable_published_with_accepted_exceptions, incomplete]
+    exception_1_0_0: >-
+      For stable v1.0.0 only, decision 066c9483-50e8-4436-bc05-6ca99936e2d4 revision 4 permits publication of the selected v0.1.0-rc.6 image identities despite incomplete P07/P08 GPU evidence (including memory and overlap), unfinished P09 documentation, expired security exceptions or scans, and the unpublished rc.6 short-audio mitigation. Disclose the actual statuses and risks; no missing check, GPU qualification or P08 is a pass. This overrides only the release-blocking consequences of those gaps in security_checks and release. Other requirements and all other releases remain unchanged.
+    stable_published_with_accepted_exceptions: Versioned artifacts and chart index are verified in all channels and aliases/latest are read back, with the explicit v1.0.0 exception and its actual nonpassing evidence prominently disclosed; this is not qualified acceptance.
     candidate_published_unqualified: All non-GPU build/publication checks and anonymous channel pulls pass; GPU qualification still outstanding.
     candidate_qualified: The selected immutable candidate passes both real target suites plus all required CI/channel checks.
     stable_prepared: Final docs and current CI/evidence match selected inputs; preserve executable digests and validate the stable chart's metadata/package change.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -256,6 +257,13 @@ func (s *Service) complete(t *ticket, result Result, err error) {
 			s.fail(closeErr)
 		}
 
+		// Retire execution ownership before publishing the result. Otherwise a
+		// caller immediately submitting its next request can see a full idle queue.
+		s.mu.Lock()
+		if s.active == t {
+			s.active = nil
+		}
+		s.mu.Unlock()
 		s.log(t.ctx, eventQueueCompleted, t.audio.RequestID)
 		close(t.done)
 	})
@@ -265,9 +273,7 @@ func (s *Service) expireWaiting(t *ticket) {
 	s.mu.Lock()
 	for i, queued := range s.queue {
 		if queued == t {
-			copy(s.queue[i:], s.queue[i+1:])
-			s.queue[len(s.queue)-1] = nil
-			s.queue = s.queue[:len(s.queue)-1]
+			s.queue = slices.Delete(s.queue, i, i+1)
 			s.mu.Unlock()
 			s.complete(t, Result{}, &domain.Failure{
 				Kind:  domain.DeadlineExceeded,
@@ -302,10 +308,6 @@ func (s *Service) work() {
 
 		result, err := s.execute(t)
 		s.complete(t, result, err)
-
-		s.mu.Lock()
-		s.active = nil
-		s.mu.Unlock()
 	}
 }
 
@@ -327,6 +329,7 @@ func (s *Service) execute(t *ticket) (result Result, err error) {
 
 	s.mu.Lock()
 	t.generation, t.submitted = h.ProcessGeneration, true
+	t.audio.ProcessGeneration = h.ProcessGeneration
 	s.mu.Unlock()
 
 	inferDone, watchDone := make(chan struct{}), make(chan struct{})

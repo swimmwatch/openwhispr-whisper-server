@@ -1,6 +1,206 @@
 # Current handoff
 
-## Current completion — rc.5 published and selected server stage passed
+## Active development-first Home Lab request — 2026-10-28
+
+The user now explicitly requested working-tree chart/application verification on
+the existing Home Lab BEFORE another RC, with iterative fixes and no candidate
+publication per iteration. This authorizes the isolated application deployment,
+not formal candidate qualification. Later actual native answers separately allowed
+one narrow GPU-driver repair through the existing Operator and temporary Ollama
+pause/restore windows for GPU tests; no general infrastructure authority. See the
+[development report](<../../../verification/homelab-development.md>) and private
+`.local/homelab/README.md` for current access, owned target and recovery state.
+
+A development release is installed. The first real chart/config startup failure
+was corrected by disabling implicit Service environment links in BOTH Pod roles;
+API startup/liveness pass. Existing chart integration checks passed18.570s; both Go
+components build and the corrected chart packages locally. Exact NVIDIA compile
+failure was captured (pci_resize_resource signature mismatch in the open module).
+With explicit approval, changed ONLY driver.kernelModuleType auto→proprietary;
+570.124.06 and other versions unchanged. Actual driver/device-plugin/toolkit/
+validator/exporter are Ready; RTX2060/6144MiB verified, GPUallocatable1 and node
+uncordoned. No reboot/manual kernel patch. Preserve this driver setting at future
+Operator Helm reapply; its old Helm values are not yet aligned.
+
+Ollama acquired the sole GPU; user approved temporary pause then restoration.
+First Whisper startup wait expired while the2.7GB image was still downloading.
+To avoid prolonged foreign-service downtime, owned backend is now paused0 and
+Ollama restored1/Ready/Available. A CPU-only, non-root image-preload Pod continues
+the exact download without GPU/cache mounts or inference. A stuck own cold Pod
+was stopped and its empty sandbox removed/verified before removing its API object;
+no unproven native/GPU work was declared stopped from deletion alone. PVCs intact.
+Update2026-10-29: preload finished. Actual Kubernetes TestDevelopmentHTTP passed
+47.603s: genuine SDK10formats JSON/text, health and shared public-contract cases.
+Backend reported base/cuda_ready=true; whisper-server occupied412MiB on GPU.
+Same-namespace wrong-ordinal/allowed-ordinal/restored-wrong network discrimination
+passed without widening backend policy. Both local unpublished Docker builds and
+existing image contract/security checks passed52.787s; CPU helpers/vet passed.
+Owned backend then stopped gracefully; GPU compute-process query was empty and
+claim retained. Ollama restored to original1 with successful readiness rollout;
+loopbackforward closed. Probe deletion needed a separate observation beyond its
+30s grace boundary; cleanup finished without force.
+
+Window3 also passed: missing prepared file caused provisioning_failed/exit1,
+readiness503 and no GPU process; Helm rollback restored baseline fingerprint,
+a new generation and public HTTP200 transcription. Controlled SM sampling observed
+nonzero activity during the request. Foreground uninstall retained the same Bound
+claim/PV. Reinstall from the local packaged chart under an actual backend deny-
+egress policy became Ready and transcribed with its model source unreachable.
+Model hash/size/mtime/inode stayed identical across rollback/reinstall. Temporary
+egress policy removed; native stopped/GPU process list empty; Ollama restored1
+with successful readiness rollout. Helm revision5 is now installed; controller
+UIDs changed on reinstall (query fresh), namespace/claim identity unchanged.
+FIFO/queued cancellation had already passed. A later single approved GPU window
+also completed actual deadline, active client cancellation, owned API loss/recovery,
+second fitting `tiny` model and cross-namespace isolation. The long active request
+was observed Busy/CUDA; both deadline owners returned canonical408 and recovered.
+A genuine client timeout caused a new ready native generation with unchanged
+fingerprint and a recovery transcription200. Deleting only the owned API Pod
+allowed its active request graceful200 completion; controller readiness returned
+without changing the recovered backend generation. Tiny reported cuda_ready and
+public200; exact-label cross-namespace probe timed out, then its temporary namespace
+was deleted. Baseline restored, backend0, Ollama original1/Ready/Available; no
+PVC/model deletion. The private packet script is run-remaining-scenarios.sh and
+its successful run is recorded in .local. No target performance claim.
+
+Development scenarios are now complete pending result/build consolidation. P08
+stays unchecked; its old formal agreement is stale and must be refreshed before
+later candidate acceptance, not reused as development proof.
+
+## Previous disposition — P07 closed with accepted limitations
+
+P07 is complete by explicit user acceptance on2026-10-28, not by claiming every
+check passed. Native question `p07_close_with_known_limitations` selected
+“Закрыть с этими ограничениями”. The user accepts both unqualified memory stability
+and unstable native speech recognizability/incomplete final performance timing.
+The failed runs, absent measured60/calibrated terminal proof and diagnostic limits
+remain recorded in the [final server report](<../../../verification/docker-rc5-p07-server.md>).
+The [sole checklist](<todo.md#delivery-checklist>) marks P07 complete on this basis.
+
+Docker functionality/CUDA/public/SDK/queue/lifecycle/cache/privacy checks passed;
+all8 lifecycle/12 cache-model cases passed93.53s, affected shutdown/terminal
+observations41.34s, full acceptance race820.405s, CPU/vet passed. This does not
+convert observational terminal checks into calibrated memory proof. Candidate
+state remains `candidate_published_unqualified`.
+
+Further memory/GDB investigation is excluded by the user's choice. No debug
+symbols were downloaded, no GDB attach occurred and no thresholds/oracle, native
+bytes or images were changed to manufacture PASS. All jobs/child work are finished.
+No P07 workload remains for this invocation. Any next packet, commit, push,
+publication, stable qualification or cluster action needs its own explicit request.
+
+## Execution history before closure — superseded status, retained evidence
+
+The user explicitly requested completing P07 without stopping. Only this packet
+is active on local branch `test/p07-final-acceptance`, based on documentation
+checkpoint `f5b3b2a0d77e41dce8df20e8c99a1c73c7516574`. Published rc.5 remains exact
+source `a98b7ccc8186ec8557d6430e005ad83ecfc2f4fa`; no candidate bytes, tags,
+application code, registry state or operator GPU processes are changed.
+No commit, push, P08, cluster or stable operation is authorized.
+
+New actual rc.5 checks passed: counted HTTPS/cache/prepared/tiny/corruption
+recipes; genuine SDK ten-format JSON/text matrix (20 cases); restart/file/log
+sensitivity controls; two concurrent public waves and 30 private-backend samples
+with native CUDA observations; independent invalid/decode/cancel/crash/three-second
+timeout recovery and resource observations. See the
+[current server report](<../../../verification/docker-rc5-p07-server.md>).
+
+**Memory qualification is still failed/unestablished.** The upfront 120-request
+conditioning procedure completed requests without errors but did not converge
+within its frozen resource variability. A separate observer deadline defect was
+corrected without changing the memory limits; the new 131.65-second run recorded
+zero recurring model-path operations with the observer available, while retaining
+its failed memory verdict. Bounded non-model allocator housekeeping is permitted
+by REQ-007/018, so this is not labeled a demonstrated application leak.
+
+The verified diagnostic runtime profile observed 22 natural Go collections with
+marked live heap in [1 MiB, 2 MiB), without GC tuning or forced collection. Its
+unchanged RSS-conditioning rule still failed; this is additional classification
+evidence, not qualification. True native-loopback multipart curl comparison then
+passed 30/30 speech controls with the same resident process and scoped CUDA activity.
+The prior private-backend result remains separate; no host native port was exposed.
+
+Desktop/Electron remains excluded; do not ask again to install or run it. The
+REQ-012 amendment now has a fresh completed independent FULL review (95/95,
+consistent) and author-made Approved state, checkpointed through MCP on 2026-10-28.
+Pinned source/specification/review: `a3ec7bf82dcab75c5f621a68f7a4ffc12839d9f5314672105612f478f9526f90`,
+`e11e46218c26b12b4cab004ab4506bfa2fcedca731c539ea2dda5efbfab83f31`,
+`9e3266d9-5c85-4cd1-a107-17b12542120f`. No new review is required for unchanged inputs.
+
+Current exact P07 agreement is `p07-go-heap-memory-evidence-v3`, explicitly accepted
+through native `ask_user_question:p07_v3_memory_method`, then saved as
+`37645c04-f075-435c-8dc1-f9d334646ff8@4`, proposal digest
+`79c2462ceae175fef4a48fcd0409f60123ce46f46178484940ca5ecc3b5cecc4`.
+`planning_packet_check` returned ready/no issues. The earlier v2 agreement at
+revision 2 and all its failed runs remain historical, not relabeled PASS. P08/P09
+agreements and the shared hashed planning section are unchanged.
+
+The precise-RSS v2 check still failed in 139.70 s after 100 conditioning successes
+and zero request errors/model-path operations. During passive observation API RSS
+reached 18,526,208 bytes versus the frozen 18,460,672-byte limit (64 KiB over).
+Evidence: `.local/p07/run/published-2406037419/` and
+`.local/p07/resume-20261028/memory-precise-rss.log`. A preceding diagnostic recorded
+26 natural API collections with marked live heap in [1 MiB, 2 MiB); it is
+supplemental classification, not stability qualification.
+
+Completed local changes: the required genuine SDK matrix no longer dispatches
+Desktop; an actual process-boundary regression has RED/GREEN/PROVE/restored race
+evidence. The full published `TestClientCompatibility` passed all 20 JSON/text
+codec cases in 13.91 s with no Electron run (retained `sdk-matrix.log`). Opt-in
+`P07_API_GC_TRACE=1` propagates only numeric Go diagnostics with actual profile
+verification and no GOGC/GOMEMLIMIT/forced-GC tuning; its subprocess test and PROVE
+passed. API RSS now uses precise PID1 smaps_rollup/Rss, with strict unknown/error
+handling and RED/GREEN/PROVE/restored race evidence. All owned-process RSS and
+Anonymous now use precise smaps_rollup; only File remains explicitly approximate
+status/RssFile. No cap or formula was enlarged. V3 role-bound implementation and
+its CPU discrimination controls are complete, with independent natural-cycle
+intervals, cutoff/cursor semantics, terminal scope retirement/recalibration and
+unchanged4096 health-GET/120-conditioning/60-measured budgets. Missing or stale
+cycles remain unknown; no forced collection or tuning.
+
+Actual v3 with corrected counters still failed after120 successful conditioning
+requests: native RSS/Anonymous grew332KiB between80 and120 against frozen28KiB
+variation. No postwork Go-heap calibration, measured60 or calibrated terminal PASS
+was reached. User-requested deeper attribution then found native growth through
+both API(+312KiB) and direct native(+348KiB) across20→120, versus only4KiB in a
+matched idle/background window. Read-only numeric mapping snapshots localized
+another468KiB increase to29 fixed64MiB-shaped anonymous reservation pairs,
+consistent with glibc arenas but not a proof of live-object retention or freedom.
+Native HTTP200 speech-recognition controls also failed independently of Go
+inference routing. All diagnostic receipts remain not_established, not repaired
+qualification. Details and limitations are in the current server report.
+
+Final uninstrumented functional regression exposed a Busy-observer deadline
+failure and missing bridge-source prerequisite as well as native speech failure
+in performance. The observer now captures only actual Busy health/current kernel
+lifetime/namespace in the one-second barrier; full ready/terminal resources and
+scoped GPU/reaping guards remain required, counters are not invented. Restoring
+the old full observer reproduced the same deadline FAIL. After bridge verification,
+all8 lifecycle and12 cache/model cases passed93.53s; other affected API shutdown
+and terminal observations passed41.34s. Full acceptance CPU5.339s/affected race
+1.035s/vet passed; a fresh full acceptance race is in progress. No complete
+uninstrumented timing-component PASS is claimed: native ninth sample failed its
+speech oracle after8 successes. The native memory and performance gates remain
+open; none is waived or retried until PASS.
+
+Next owner/action: parent consolidates final race/freshness and native profiling
+feasibility under existing observer privileges, without changing qualification
+criteria or native/image bytes. P07 stays unchecked until actual required evidence
+passes; no commit, push, publication, P08 or cluster action is authorized.
+
+Execution notes: select the actual Go 1.27.3 compiler, not an older auto-switching
+shim under GOTOOLCHAIN=local. The exact local binary path and commands are retained
+in private run logs. Use GOTOOLCHAIN=local/GOWORK=off, task-local GOCACHE
+`.local/go-cache` and `rtk proxy flock -n .local/p07/gpu0-acceptance.lock` for each GPU
+workload. Published selection is `.local/p07/rc5-selection-ghcr.json`; keep
+P07_LOCAL_TESTS unset and P07_GPU_TESTS=1. Current execution ownership and active
+jobs are checkpointed privately under `.local/p07/resume-20261028/`; do not infer
+completion from an old runtime message. Preserve the six parallel user cache/
+action/changelog/release files; their unchanged entry hashes are saved in
+`.local/p07/resume-20261028/user-files.sha256`. No application image/source was
+rebuilt or edited.
+
+## Previous completed checkpoint — rc.5 published and selected server stage passed
 
 The approved correction merged in PR #13, source
 `a98b7ccc8186ec8557d6430e005ad83ecfc2f4fa`. All seven CI jobs and every required

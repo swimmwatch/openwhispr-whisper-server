@@ -24,6 +24,9 @@ type Normalized struct {
 	Duration  time.Duration
 	RequestID string
 	Fields    domain.InferenceFields
+	// ProcessGeneration pins service dispatch to the process it owns for recovery.
+	// Direct adapter callers may leave it empty and use a fresh health observation.
+	ProcessGeneration string
 }
 
 type Result = domain.TranscriptionResult

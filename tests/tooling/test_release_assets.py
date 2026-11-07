@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 FAKE_GH = """import json
@@ -23,7 +24,13 @@ if operation == "view":
     release["assets"] = [{"name": item.name} for item in (remote / "assets").iterdir()]
     print(json.dumps(release))
 elif operation == "create":
-    (remote / "release.json").write_text(json.dumps({"isPrerelease": "--prerelease" in args}))
+    (remote / "release.json").write_text(json.dumps({
+        "isPrerelease": "--prerelease" in args, "isLatest": "--latest" in args,
+    }))
+elif operation == "edit":
+    release = json.loads((remote / "release.json").read_text())
+    release["isLatest"] = "--latest" in args
+    (remote / "release.json").write_text(json.dumps(release))
 elif operation == "download":
     name = args[args.index("--pattern") + 1]
     directory = Path(args[args.index("--dir") + 1])
@@ -34,6 +41,8 @@ elif operation == "upload":
     if destination.exists():
         sys.exit(1)
     shutil.copyfile(source, destination)
+    if os.environ.get("ASSET_CORRUPT_UPLOAD") == source.name:
+        destination.write_bytes(b"corrupted remote bytes")
 else:
     sys.exit(2)
 """
@@ -55,7 +64,7 @@ class ReleaseAssetsTests(unittest.TestCase):
         binary.write_text(f"#!{sys.executable}\n" + FAKE_GH)
         binary.chmod(0o700)
 
-    def publish(self) -> subprocess.CompletedProcess[str]:
+    def publish(self, stage: str = "candidate") -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["bash", str(ROOT / "tools/release/upload-assets.sh")],
             env=dict(
@@ -63,8 +72,8 @@ class ReleaseAssetsTests(unittest.TestCase):
                 PATH=str(self.root) + os.pathsep + os.environ["PATH"],
                 ASSET_REMOTE=str(self.remote),
                 RUNNER_TEMP=str(self.root),
-                RELEASE_TAG="v0.1.0-rc.1",
-                RELEASE_STAGE="candidate",
+                RELEASE_TAG="v0.1.0-rc.1" if stage == "candidate" else "v0.1.0",
+                RELEASE_STAGE=stage,
                 STATE_FILE=str(self.state),
                 CHART_DIR=str(self.chart_dir),
             ),
@@ -82,6 +91,27 @@ class ReleaseAssetsTests(unittest.TestCase):
         )
         second = self.publish()
         self.assertEqual(second.returncode, 0, second.stderr)
+
+    def test_corrupted_new_upload_cannot_report_success(self) -> None:
+        with patch.dict(os.environ, {"ASSET_CORRUPT_UPLOAD": self.state.name}):
+            result = self.publish()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.remote / "assets/SHA256SUMS").exists())
+        self.assertEqual(list(self.root.glob("release-asset.*")), [])
+
+    def test_failed_asset_readback_does_not_advance_stable_latest(self) -> None:
+        with patch.dict(os.environ, {"ASSET_CORRUPT_UPLOAD": self.state.name}):
+            result = self.publish("stable")
+        self.assertNotEqual(result.returncode, 0)
+        release = json.loads((self.remote / "release.json").read_text())
+        self.assertFalse(release["isLatest"])
+
+    def test_verified_stable_assets_advance_latest(self) -> None:
+        result = self.publish("stable")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        release = json.loads((self.remote / "release.json").read_text())
+        self.assertTrue(release["isLatest"])
+        self.assertFalse(release["isPrerelease"])
 
     def test_existing_different_asset_stops_without_overwriting(self) -> None:
         (self.remote / "release.json").write_text('{"isPrerelease":true}')
