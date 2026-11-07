@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/go-playground/validator/v10 v10.30.5
-	github.com/go-viper/mapstructure/v2 v2.4.0
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/knadh/koanf/providers/basicflag v1.1.1
 	github.com/knadh/koanf/providers/confmap v1.0.1
 	github.com/knadh/koanf/providers/env/v2 v2.0.2
