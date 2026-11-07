@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/url"
 	"os"
 	"os/exec"
@@ -20,13 +21,20 @@ import (
 	"time"
 )
 
-// runClientCases must only be called by the parent-owned ready local target.
-// Both upstream probes currently select base and the pinned WAV. This is genuine
-// WAV transport evidence, not a client-by-codec matrix or complete Electron UI.
+func isLoopbackAPIRoot(apiURL string) bool {
+	parsed, err := url.Parse(apiURL)
+	return err == nil && parsed.Scheme == "http" &&
+		(parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "localhost" || parsed.Hostname() == "::1") &&
+		parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" &&
+		(parsed.Path == "" || parsed.Path == "/")
+}
+
+// runClientCases requires a parent-owned ready target. The required V1 client
+// path uses the genuine SDK codec matrix in JSON and text. Desktop/Electron is
+// not executed and actual application interoperability is not established.
 func runClientCases(t *testing.T, ctx context.Context, apiURL, fixturePath, privateEvidenceDir string) {
 	t.Helper()
-	parsed, err := url.Parse(apiURL)
-	if err != nil || parsed.Scheme != "http" || (parsed.Hostname() != "127.0.0.1" && parsed.Hostname() != "localhost" && parsed.Hostname() != "::1") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+	if !isLoopbackAPIRoot(apiURL) {
 		t.Fatal("actual client slice requires an explicit credential-free loopback API root")
 	}
 	file, err := os.Open(fixturePath)
@@ -49,30 +57,7 @@ func runClientCases(t *testing.T, ctx context.Context, apiURL, fixturePath, priv
 	}
 	base := strings.TrimRight(apiURL, "/") + "/v1"
 	uv := filepath.Join(root, ".local", "uv-migration", "bin", "uv")
-	var results []clientCaseResult
-	for _, format := range []string{"json", "text"} {
-		name := "official-openai-" + format
-		t.Run(name, func(t *testing.T) {
-			stdout, commandErr := runClientCaseCommand(ctx, root, uv, "run", "--locked", "python", "tests/acceptance/openai_client.py", "--base-url", base, "--audio", absoluteFixture, "--response-format", format, "--timeout-seconds", "120")
-			result, validationErr := readClientCaseResult(stdout, "openai", format)
-			result.Name, result.ExpectedVersion = name, "2.11.0"
-			result.Succeeded = commandErr == nil && validationErr == nil
-			results = append(results, result)
-			if !result.Succeeded {
-				t.Error("genuine OpenAI SDK transport failed; raw diagnostics and endpoint withheld")
-			}
-		})
-	}
-	t.Run("openwhispr-electron-upload", func(t *testing.T) {
-		stdout, commandErr := runClientCaseCommand(ctx, root, "bash", filepath.Join(root, ".local", "p07", "clients", "run-electron-probe.sh"), "--base-url="+base, "--audio="+absoluteFixture)
-		result, validationErr := readClientCaseResult(stdout, "openwhispr", "json")
-		result.Name, result.ExpectedVersion = "openwhispr-electron-upload", "1.10.4"
-		result.Succeeded = commandErr == nil && validationErr == nil
-		results = append(results, result)
-		if !result.Succeeded {
-			t.Error("genuine OpenWhispr Electron upload failed; raw diagnostics and endpoint withheld")
-		}
-	})
+	results := runClientCaseMatrix(t, ctx, root, uv, base, absoluteFixture, runClientCaseCommand)
 	if err := os.MkdirAll(privateEvidenceDir, 0700); err != nil {
 		t.Fatal("cannot create private client evidence directory")
 	}
@@ -80,7 +65,7 @@ func runClientCases(t *testing.T, ctx context.Context, apiURL, fixturePath, priv
 		Scope         string             `json:"scope"`
 		Qualification string             `json:"qualification"`
 		Results       []clientCaseResult `json:"results"`
-	}{"actual-client-WAV-transport-only", "not_established", results}, "", "  ")
+	}{"actual-SDK-codec-matrix-desktop-not-executed", "not_established", results}, "", "  ")
 	if err != nil {
 		t.Fatal("cannot serialize sanitized client results")
 	}
@@ -95,6 +80,27 @@ func runClientCases(t *testing.T, ctx context.Context, apiURL, fixturePath, priv
 	}
 }
 
+func runClientCaseMatrix(t *testing.T, ctx context.Context, root, uv, base, absoluteFixture string, runCommand func(context.Context, string, string, ...string) ([]byte, error)) []clientCaseResult {
+	t.Helper()
+	var results []clientCaseResult
+	for _, format := range []string{"json", "text"} {
+		name := "official-openai-" + format
+		t.Run(name, func(t *testing.T) {
+			for _, fixture := range clientCodecFixtures {
+				t.Run(fixture.Name, func(t *testing.T) {
+					audioPath := filepath.Join(filepath.Dir(absoluteFixture), fixture.Name)
+					result := runSharedSDKFixture(ctx, root, uv, base, audioPath, format, fixture, runCommand)
+					results = append(results, result)
+					if !result.Succeeded {
+						t.Error("genuine OpenAI SDK codec transport failed; raw diagnostics and endpoint withheld")
+					}
+				})
+			}
+		})
+	}
+	return results
+}
+
 type clientCaseResult struct {
 	Name                 string `json:"name"`
 	ExpectedVersion      string `json:"expected_version"`
@@ -103,17 +109,29 @@ type clientCaseResult struct {
 	Succeeded            bool   `json:"succeeded"`
 	TranscriptCharacters int    `json:"transcript_characters,omitempty"`
 	FullUI               string `json:"full_ui"`
+	FixtureName          string `json:"fixture_name,omitempty"`
+	FixtureSHA256        string `json:"fixture_sha256,omitempty"`
+	FixtureBytes         int    `json:"fixture_bytes,omitempty"`
+	FixtureMediaType     string `json:"fixture_media_type,omitempty"`
+	ResponseFormat       string `json:"response_format,omitempty"`
 }
 
 // Select validated scalar facts only. Original JSON may contain a private route;
 // neither that route nor its response bytes are copied to the summary or errors.
 func readClientCaseResult(content []byte, client, format string) (clientCaseResult, error) {
+	return readClientFixtureCaseResult(content, client, format, clientCodecFixtures[0])
+}
+
+func readClientFixtureCaseResult(content []byte, client, format string, expected clientCodecFixture) (clientCaseResult, error) {
 	var decoded struct {
 		Success            bool   `json:"success"`
 		SDK                string `json:"sdk"`
 		SDKVersion         string `json:"sdk_version"`
 		Format             string `json:"response_format"`
 		Fixture            string `json:"fixture_sha256"`
+		FixtureName        string `json:"fixture_name"`
+		FixtureBytes       int    `json:"fixture_bytes"`
+		FixtureMediaType   string `json:"fixture_media_type"`
 		Characters         int    `json:"transcript_characters"`
 		Transcript         string `json:"transcript_sha256"`
 		Qualification      string `json:"qualification"`
@@ -136,11 +154,16 @@ func readClientCaseResult(content []byte, client, format string) (clientCaseResu
 	}
 	result := clientCaseResult{FullUI: "not_executed"}
 	hash, fixture, characters := decoded.Transcript, decoded.Fixture, decoded.Characters
+	expectedSHA256 := publicJFKIdentity
 	if client == "openai" {
-		if decoded.SDK != "openai-python" || decoded.SDKVersion != "2.11.0" || decoded.Format != format {
+		if decoded.SDK != "openai-python" || decoded.SDKVersion != "2.11.0" || decoded.Format != format || decoded.FixtureName != expected.Name || decoded.FixtureBytes != expected.Bytes || decoded.FixtureMediaType != expected.MediaType {
 			return fail()
 		}
+		expectedSHA256 = expected.SHA256
 		result.ObservedVersion = decoded.SDKVersion
+		result.FixtureName, result.FixtureSHA256 = decoded.FixtureName, decoded.Fixture
+		result.FixtureBytes, result.FixtureMediaType = decoded.FixtureBytes, decoded.FixtureMediaType
+		result.ResponseFormat = decoded.Format
 	} else if client == "openwhispr" {
 		if decoded.Upstream != "OpenWhispr/openwhispr" || decoded.Version != "1.10.4" || decoded.Commit != "7a6ae826de9ec1caf65f3a6e769475dab2ae829f" || decoded.Electron != "41.10.7" || decoded.Stage != "transport-call" || decoded.Observation != "actual-electron-net-fetch-with-verbatim-upstream-upload-transport" || decoded.FullUI != "not_executed" {
 			return fail()
@@ -151,7 +174,7 @@ func readClientCaseResult(content []byte, client, format string) (clientCaseResu
 		return fail()
 	}
 	bytes, err := hex.DecodeString(hash)
-	if err != nil || len(bytes) != sha256.Size || fixture != publicJFKIdentity || characters <= 0 {
+	if err != nil || len(bytes) != sha256.Size || fixture != expectedSHA256 || characters <= 0 {
 		return fail()
 	}
 	result.TranscriptCharacters = characters
@@ -187,19 +210,7 @@ func runClientCaseCommand(parent context.Context, root, executable string, args 
 	command.Dir = root
 	command.Env = append(os.Environ(), "UV_CACHE_DIR="+filepath.Join(root, ".local", "uv-cache"))
 	command.Stdout, command.Stderr = stdout, stderr
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	command.WaitDelay = 200 * time.Millisecond
-	command.Cancel = func() error {
-		err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-		if errors.Is(err, syscall.ESRCH) {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	err := command.Run()
-	if command.Process != nil {
-		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-	}
+	err := runOwnedCommand(command)
 	if stdout.overflow || stderr.overflow {
 		return nil, errors.New("client diagnostics exceeded bounded observation")
 	}
@@ -210,7 +221,7 @@ func runClientCaseCommand(parent context.Context, root, executable string, args 
 }
 
 func TestClientCaseResultRequiresActualEvidence(t *testing.T) {
-	valid := map[string]any{"success": true, "sdk": "openai-python", "sdk_version": "2.11.0", "response_format": "json", "fixture_sha256": publicJFKIdentity, "transcript_characters": 25, "transcript_sha256": strings.Repeat("a", 64), "qualification": "not_established", "route": "http://PRIVATE_ENDPOINT_MARKER", "text": "PRIVATE_TRANSCRIPT_MARKER"}
+	valid := map[string]any{"success": true, "sdk": "openai-python", "sdk_version": "2.11.0", "response_format": "json", "fixture_sha256": publicJFKIdentity, "fixture_name": "jfk.wav", "fixture_bytes": 352078, "fixture_media_type": "audio/wav", "transcript_characters": 25, "transcript_sha256": strings.Repeat("a", 64), "qualification": "not_established", "route": "http://PRIVATE_ENDPOINT_MARKER", "text": "PRIVATE_TRANSCRIPT_MARKER"}
 	content, _ := json.Marshal(valid)
 	result, err := readClientCaseResult(content, "openai", "json")
 	if err != nil || result.ObservedVersion != "2.11.0" {
@@ -222,10 +233,7 @@ func TestClientCaseResultRequiresActualEvidence(t *testing.T) {
 	}
 	for _, field := range []string{"sdk_version", "fixture_sha256", "transcript_sha256", "response_format", "qualification"} {
 		t.Run(field, func(t *testing.T) {
-			modified := make(map[string]any)
-			for key, value := range valid {
-				modified[key] = value
-			}
+			modified := maps.Clone(valid)
 			modified[field] = "wrong"
 			content, _ := json.Marshal(modified)
 			if _, err := readClientCaseResult(content, "openai", "json"); err == nil {
@@ -246,10 +254,7 @@ func TestClientCaseElectronRequiresTransportNotDescriptor(t *testing.T) {
 	}
 	for _, field := range []string{"version", "commit", "electron", "stage", "observation", "fullUI", "fixtureSHA256"} {
 		t.Run(field, func(t *testing.T) {
-			modified := make(map[string]any)
-			for key, value := range valid {
-				modified[key] = value
-			}
+			modified := maps.Clone(valid)
 			modified[field] = "not-the-required-evidence"
 			content, _ := json.Marshal(modified)
 			if _, err := readClientCaseResult(content, "openwhispr", "json"); err == nil {

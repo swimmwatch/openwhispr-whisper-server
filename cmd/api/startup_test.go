@@ -115,21 +115,7 @@ func TestAPIStartupFailuresReleaseResources(t *testing.T) {
 	}
 }
 
-func TestAPIWAVAndShutdownBounds(t *testing.T) {
-	for _, tc := range []struct {
-		seconds int
-		want    int64
-	}{
-		{1, 32044},
-		{134217, 4294944044},
-		{134218, 4294967303},
-		{math.MaxInt, 4294967303},
-	} {
-		if got := maxWAVBytes(tc.seconds); got != tc.want {
-			t.Errorf("WAV limit for %d seconds: got %d, want %d", tc.seconds, got, tc.want)
-		}
-	}
-
+func TestAPIShutdownBounds(t *testing.T) {
 	for _, tc := range []struct {
 		drain, cleanup, want time.Duration
 	}{

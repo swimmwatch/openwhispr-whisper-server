@@ -5,9 +5,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
 // GPUActivity contains only measurements for the selected native host process.
@@ -62,33 +66,73 @@ func (r *gpuActivityReader) sample(line string) {
 }
 
 // ObserveGPUActivity samples actual NVIDIA per-process utilization and allocation
-// while work runs. Start/stop the caller-owned context around the workload; no
-// GPU activity is inferred from public latency or device enumeration.
+// while work runs. Explicit cancellation stops a completed observation; deadline
+// expiry or early observer exit remains incomplete. No GPU activity is inferred
+// from public latency or device enumeration.
 func ObserveGPUActivity(ctx context.Context, nativeHostPID int, ready chan<- struct{}) (GPUActivity, error) {
 	if nativeHostPID <= 0 {
 		return GPUActivity{}, errors.New("an observed native host PID is required")
 	}
-	command := exec.CommandContext(ctx, "nvidia-smi", "pmon", "-i", "0", "-s", "um", "-d", "1")
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return GPUActivity{}, errors.New("cannot open scoped GPU observer")
+	observerContext, stop := context.WithCancel(ctx)
+	defer stop()
+	command := exec.CommandContext(observerContext, "nvidia-smi", "pmon", "-i", "0", "-s", "um", "-d", "1")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.WaitDelay = 200 * time.Millisecond
+	var killedOnCancel atomic.Bool
+	command.Cancel = func() error {
+		err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		if err == nil {
+			killedOnCancel.Store(true)
+		}
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
 	}
-	command.Stderr = io.Discard
+	stdout, sink := io.Pipe()
+	command.Stdout, command.Stderr = sink, io.Discard
 	if err := command.Start(); err != nil {
-		return GPUActivity{}, errors.New("cannot start scoped GPU observer")
+		_ = sink.Close()
+		_ = stdout.Close()
+		return GPUActivity{}, errors.Join(errors.New("cannot start scoped GPU observer"), ctx.Err())
 	}
 	if ready != nil {
 		close(ready)
 	}
-	reader := gpuActivityReader{pid: nativeHostPID}
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 4096), 64<<10)
-	for scanner.Scan() {
-		reader.sample(scanner.Text())
+	type observation struct {
+		activity GPUActivity
+		err      error
 	}
+	done := make(chan observation, 1)
+	go func() {
+		reader := gpuActivityReader{pid: nativeHostPID}
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 4096), 64<<10)
+		for scanner.Scan() {
+			reader.sample(scanner.Text())
+		}
+		if scanner.Err() != nil {
+			stop()
+		}
+		// A failed scanner must also release the exec copier's sink.Write.
+		_ = stdout.Close()
+		done <- observation{reader.activity, scanner.Err()}
+	}()
+	// Wait owns exec's copying goroutine and its WaitDelay. A leader that
+	// exits while a descendant holds stdout cannot leave Scan blocked forever.
 	waitErr := command.Wait()
-	if scanner.Err() != nil || waitErr != nil && ctx.Err() == nil {
-		return reader.activity, errors.New("scoped GPU activity observation failed")
+	stop()
+	_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	_ = sink.Close()
+	result := <-done
+	var exited *exec.ExitError
+	stopped := false
+	if ctx.Err() == context.Canceled && killedOnCancel.Load() && errors.As(waitErr, &exited) {
+		status, ok := exited.Sys().(syscall.WaitStatus)
+		stopped = ok && status.Signaled() && status.Signal() == syscall.SIGKILL
 	}
-	return reader.activity, nil
+	if result.err != nil || !stopped {
+		return result.activity, errors.Join(errors.New("scoped GPU activity observation failed"), ctx.Err())
+	}
+	return result.activity, nil
 }

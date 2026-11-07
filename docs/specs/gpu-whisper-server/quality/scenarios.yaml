@@ -243,16 +243,16 @@ scenarios:
     environment: [ci, builder, chart_matrix, distribution]
     workload: Source Go vulnerability/static checks, both Dockerfiles/images, source secrets, default/custom/rendered/packaged Helm matrix and candidate/stable scan freshness.
     observation: Scanner versions/database/rules/time, exact source/image/chart/values identities, safe findings, coverage gaps, suppression inventory and aggregate Security Check conclusion.
-    threshold: Blocking findings or failed/missing/stale/unsupported required scans deny release; secret matches are redacted; no empty-input green, JSON-exit bypass, blanket suppression or image-digest mismatch.
-    planned_check: Actual scanner runs plus disposable vulnerable Go/unsafe Dockerfile/privileged manifest/fake-secret and exit-zero finding fixtures; expired or broad exception and stale/wrong-digest reports must be rejected.
+    threshold: Blocking findings or failed/missing/stale/unsupported required scans deny release, except that the specific v1.0.0 release-only exception in REQ-028 permits publication with its listed nonpassing security evidence and risks disclosed; the evidence itself is not a pass. Secret matches are redacted; no empty-input green, JSON-exit bypass, blanket suppression or image-digest mismatch.
+    planned_check: Actual scanner runs plus disposable vulnerable Go/unsafe Dockerfile/privileged manifest/fake-secret and exit-zero finding fixtures; expired or broad exception and stale/wrong-digest reports must be rejected as passing security evidence. Exercise the narrow v1.0.0 publication exception separately without relabelling that evidence as passed; reject a wrong release, candidate, image identity or unlisted failure.
   - id: Q-RELEASEGATE
     requirement_ids: [REQ-020, REQ-024, REQ-026, REQ-027, REQ-028]
     packets: [R01, P07, P08, P09, R02]
     environment: [ci, distribution, docker_gpu, homelab_gpu]
     workload: RC build/fix/new-RC loop, missing GPU report, failed required job, stale inputs, final documentation, stable image promotion and stable chart repackage.
     observation: Exact candidate/build/release sources, CI results, both GPU reports, inventory state, chart-render equivalence and stable aliases/latest.
-    threshold: Stable denied until current complete evidence; image digests preserved; chart metadata/version change validated; runtime drift renews affected acceptance; no automatic cluster deployment.
-    planned_check: Gate predicate tests written before workflow plus real pre-release qualification; remove report/change source/alias fixture one at a time and verify denial, then stable pull-back.
+    threshold: Stable denied until current complete evidence, except for the specific v1.0.0 release-only exception in REQ-028 with all listed gaps and risks disclosed and no false pass; image digests preserved; chart metadata/version change validated; runtime drift renews affected acceptance; no automatic cluster deployment.
+    planned_check: Gate predicate tests written before workflow plus real pre-release qualification; remove report/change source/alias fixture one at a time and verify denial outside the specific v1.0.0 exception. For that exception verify the allowed gaps remain nonpassing and disclosed, reject wrong identities or unlisted failures, then verify stable pull-back.
   - id: Q-OBSERVABILITY
     requirement_ids: [REQ-019, REQ-029]
     packets: [F01, P02, P03, P04, P06, P09]

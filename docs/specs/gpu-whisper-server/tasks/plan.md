@@ -15,6 +15,15 @@ not newly passed. Do not restore them or introduce replacement file validators.
 Use the existing compiler/linters and tests that execute project behavior, as
 specified in [AGENTS.md](../../../../AGENTS.md#test-behavior-not-repository-files).
 
+## Current P07 disposition — 2026-10-28
+
+P07 is closed with explicitly accepted memory and native speech/performance
+limitations, following the actual user answer `p07_close_with_known_limitations`.
+Failed or absent proofs remain failed/unestablished; closure is not unconditional
+qualification. See the [sole checklist](<todo.md#delivery-checklist>) and
+[final server report](<../../../verification/docker-rc5-p07-server.md>). No next
+packet, debugger investigation, publication or cluster work is authorized.
+
 ## Reviewed inputs and readiness
 
 - source_version: `2c17104536fbf2438169efc6f53d592173ec8d90e326999bee3aa6701c38d3b9`
@@ -486,7 +495,7 @@ Preserve completed I01/I02/I03/C01/F01/P01 and unrelated dirty work. No clean tr
 | [C02](ci_02_build_release_pipeline.md#technical-agreement) | `c02-security-release-ci-v1` | `19d3f11e-13ba-4c7a-b727-511a0c24a7d2@4` | `69e40c92067aa82a6b08edf9ee285ac8ccb2da5d9f49919e96661ced8f917633` | ready; not executed |
 | [R01](release_01_prerelease.md#technical-agreement) | `r01-immutable-candidate-v1` | `19d3f11e-13ba-4c7a-b727-511a0c24a7d2@4` | `7823ded89bba909fb9da863071a0da3784104e9a2cd40a0f9704c33262af0ad0` | ready; not executed |
 | [R02](release_02_stable.md#technical-agreement) | `r02-qualified-promotion-v1` | `19d3f11e-13ba-4c7a-b727-511a0c24a7d2@4` | `bbb43fdeeefe76a806b62c75d8e9beca1cc67596a017d883130969e3f856edec` | ready; not executed |
-| [P07](07_docker_gpu_acceptance.md#technical-agreement) | `p07-docker-gpu-evidence-v1` | `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4` | `a91beca407917e6c1206f99d93223f0d72452634c9da1fe53f0efeb0a418b31e` | ready; not executed |
+| [P07](07_docker_gpu_acceptance.md#technical-agreement) | `p07-go-heap-memory-evidence-v3` | `37645c04-f075-435c-8dc1-f9d334646ff8@4` | `79c2462ceae175fef4a48fcd0409f60123ce46f46178484940ca5ecc3b5cecc4` | ready on current Approved/reviewed inputs (2026-10-28); closed2026-10-28 by explicit acceptance of unqualified memory stability and native speech/incomplete-performance limitations; actual failed checks retained, not unconditional release qualification |
 | [P08](08_homelab_gpu_acceptance.md#technical-agreement) | `p08-homelab-gpu-evidence-v1` | `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4` | `73141b2225d0865a53871cc9b07d3af9da72d5e035ce15de2284c9f78cfaab51` | ready; not executed |
 | [P09](09_documentation.md#technical-agreement) | `p09-verified-documentation-v1` | `be6db71a-6ebf-4f95-bca4-b81f2da2171a@4` | `3f6434557b48af344ceddbd911194ece72e5044d9757c11319783be320885625` | ready; not executed |
 

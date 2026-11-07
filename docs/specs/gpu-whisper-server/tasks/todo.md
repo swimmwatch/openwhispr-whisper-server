@@ -1,8 +1,20 @@
 # Resident V1 completion checklist
 
-Status: I01, I02, I03, C01, F01, P01–P06 and C02 complete. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Hosted CI/security qualification and R01 pre-release publication are complete. Cluster/GPU/CNI acceptance, stable publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
+Status: I01, I02, I03, C01, F01, P01–P06 and C02 complete. P07 is closed with explicitly accepted memory and native speech/performance limitations (2026-10-28), not unconditional qualification. P05's CPU-quota correction passed all ten BuildKit resource cases, both image rebuilds, the full race/image/standalone suite and final freshness checks. P06 passed 30 local Helm/Kubernetes API-schema cases, configuration/boundary/package checks, full Go tests/race/vet and fifteen PROVE mutations (2026-10-23). Hosted CI/security qualification and R01 pre-release publication are complete. Home Lab GPU/CNI acceptance, stable publication and final documentation remain unexecuted. C01 hosted evidence stays historical. This is the sole packet completion checklist. Planned or unavailable checks for remaining packets are not passes.
 
-## Current R01 completion — 2026-10-27
+## Current P07 closure — 2026-10-28
+
+The user explicitly accepted both remaining limitations and requested closure:
+`ask_user_question:p07_close_with_known_limitations` → “Закрыть с этими ограничениями”.
+P07 is complete as a Docker verification packet with accepted deviations, not an
+assertion that native memory stability or the final native speech/performance
+comparison passed. Actual failures and missing measured/calibrated proofs remain
+in the [final report](<../../../verification/docker-rc5-p07-server.md>). Further
+memory/debugger research is excluded. Candidate state remains
+`candidate_published_unqualified`; P08/P09/R02 remain unchecked and uninvoked.
+The publication-era unchecked P07 statements below are historical.
+
+## Previous R01 completion — 2026-10-27
 
 [v0.1.0-rc.5](https://github.com/swimmwatch/openwhispr-whisper-server/releases/tag/v0.1.0-rc.5)
 is published from merged PR #13/source `a98b7ccc8186ec8557d6430e005ad83ecfc2f4fa`.
@@ -104,7 +116,7 @@ R01 is not yet eligible.
 - [x] [P06 — Helm chart](06_helm_chart.md)
 - [x] [C02 — complete build and release pipeline](ci_02_build_release_pipeline.md)
 - [x] [R01 — pre-release publication and anonymous pull-back](release_01_prerelease.md)
-- [ ] [P07 — Docker / RTX 5070 Ti Laptop acceptance](07_docker_gpu_acceptance.md)
+- [x] [P07 — Docker / RTX 5070 Ti Laptop acceptance](07_docker_gpu_acceptance.md) — closed with explicitly accepted memory and native speech/performance limitations (2026-10-28); not unconditional release qualification
 - [ ] [P08 — Home Lab / RTX 2060 acceptance](08_homelab_gpu_acceptance.md)
 - [ ] [P09 — final README and durable documentation](09_documentation.md)
 - [ ] [R02 — qualified stable release](release_02_stable.md)

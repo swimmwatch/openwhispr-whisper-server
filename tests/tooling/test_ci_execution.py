@@ -1,7 +1,14 @@
+import contextlib
 import hashlib
 import json
+import os
+import signal
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC
 from pathlib import Path
 from typing import Any
@@ -10,6 +17,89 @@ from tools.security import check
 
 
 class SecurityExecutionTests(unittest.TestCase):
+    def test_sigterm_stops_the_owned_scanner_group(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pid_path = root / "child.pid"
+            child = (
+                "import os, pathlib, time\n"
+                f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid()))\n"
+                "time.sleep(60)\n"
+            )
+            wrapper = (
+                "import sys\nfrom tools.security.run import execute\n"
+                f"execute([sys.executable, '-c', {child!r}], timeout=60)\n"
+            )
+            process = subprocess.Popen(
+                [sys.executable, "-c", wrapper], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            try:
+                deadline = time.monotonic() + 5
+                while not pid_path.exists():
+                    if time.monotonic() >= deadline:
+                        self.fail("Scanner did not start before cancellation")
+                    time.sleep(0.01)
+                process.terminate()
+                process.communicate(timeout=5)
+                self.assertNotEqual(process.returncode, 0)
+                proc = Path(f"/proc/{int(pid_path.read_text())}/stat")
+                self.assertTrue(not proc.exists() or proc.read_text().split()[2] == "Z")
+            finally:
+                process.kill()
+                process.communicate(timeout=5)
+                if pid_path.exists():
+                    with contextlib.suppress(ProcessLookupError):
+                        os.kill(int(pid_path.read_text()), signal.SIGKILL)
+
+    def test_scanner_worker_and_failed_spawn_preserve_signal_ownership(self) -> None:
+        from tools.security.run import execute
+
+        previous = signal.getsignal(signal.SIGTERM)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            self.assertEqual(
+                executor.submit(execute, [sys.executable, "-c", "print('{}')"]).result(),
+                (0, "{}\n"),
+            )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaises(FileNotFoundError),
+        ):
+            execute([str(Path(directory) / "missing-scanner")])
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+
+    def test_scanner_descendants_stop_on_timeout_and_normal_exit(self) -> None:
+        from tools.security.run import execute
+
+        for wait_for_timeout in (True, False):
+            with self.subTest(timeout=wait_for_timeout), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                pid_path = root / "child.pid"
+                command = [
+                    sys.executable,
+                    "-c",
+                    "import pathlib, subprocess, sys, time\n"
+                    "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+                    f"pathlib.Path({str(pid_path)!r}).write_text(str(child.pid))\n"
+                    + ("time.sleep(60)\n" if wait_for_timeout else "print('{}')\n"),
+                ]
+                try:
+                    if wait_for_timeout:
+                        with self.assertRaises(subprocess.TimeoutExpired):
+                            execute(command, root, timeout=1)
+                    else:
+                        self.assertEqual(execute(command, root, timeout=1)[0], 0)
+                    pid = int(pid_path.read_text())
+                    proc = Path(f"/proc/{pid}/stat")
+                    deadline = time.monotonic() + 1
+                    while proc.exists() and proc.read_text().split()[2] != "Z":
+                        if time.monotonic() >= deadline:
+                            self.fail("Scanner descendant survived owned process cleanup")
+                        time.sleep(0.01)
+                finally:
+                    if pid_path.exists():
+                        with contextlib.suppress(ProcessLookupError):
+                            os.kill(int(pid_path.read_text()), signal.SIGKILL)
+
     def test_native_applicable_findings_are_retained_without_waiving_blockers(self) -> None:
         import io
         from datetime import datetime
@@ -98,7 +188,7 @@ class SecurityExecutionTests(unittest.TestCase):
 
         raw = json_stream(
             '{"config":{"scanner_name":"govulncheck","protocol_version":"v1.0.0"}}\n'
-            '{"finding":{"trace":[{"function":"Unsafe"}]}}'
+            '{"finding":{"osv":"GO-2026-1234","trace":[{"module":"fixture","function":"Unsafe"}]}}'
         )
 
         self.assertEqual(check.evaluate("govulncheck", raw, 0)["blocking_count"], 1)

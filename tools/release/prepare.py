@@ -2,6 +2,7 @@
 """Select accepted images and the current chart without rebuilding for promotion."""
 
 import argparse
+import copy
 import json
 import shutil
 import subprocess
@@ -15,8 +16,8 @@ import yaml
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.release.artifacts import ROOT, inspect_layout, runtime_identity, verify_chart
-from tools.release.check import require
 from tools.release.storage import link_or_copy
+from tools.release.validation import require
 from tools.security.check import VALUES_VARIANTS
 
 
@@ -45,7 +46,7 @@ def rendered(
 ) -> list[dict[str, Any]]:
     with tempfile.TemporaryDirectory(prefix="whisper-promotion-render-") as td:
         path = Path(td) / "values.json"
-        values = json.loads(json.dumps(values))
+        values = copy.deepcopy(values)
         for role, identity in images.items():
             values.setdefault("images", {}).setdefault(role, {})["digest"] = identity
 

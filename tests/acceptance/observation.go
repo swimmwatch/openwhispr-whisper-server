@@ -16,8 +16,11 @@ type DockerPrivateHealth struct {
 	CUDAReady                                                                   bool
 }
 
-// Nil counters are unknown, not measured zero. API RSS/FD covers PID 1; backend
-// covers PID 1 plus the unique resident whisper-server, excluding exec probes.
+// Nil counters are unknown, not measured zero. Owned-process RSS uses precise
+// smaps_rollup totals: API PID 1; backend PID 1 plus its unique native process,
+// excluding exec probes. Approximate status/VmRSS cannot qualify small deviations.
+// The separate breakdown also uses precise Anonymous; only its File counter is
+// still explicitly approximate status/RssFile. FD counts cover the same owners.
 // Scratch counts visible regular files under /tmp and their logical byte sizes,
 // not allocated filesystem blocks or deleted-but-still-open file storage.
 type DockerResourceSnapshot struct {
@@ -38,20 +41,25 @@ type DockerSnapshot struct {
 
 // No payload, argv, file contents or scratch filenames leave this fixed probe.
 // A missing tool, denied proc entry or vanished native process fails explicitly.
-const dockerResourceProbe = `set -eu
-rss_bytes() {
+const dockerRSSProbe = `rss_bytes_from_report() {
  kb=
+ expected=${1-Rss:}
  while read -r key value unit; do
-  if [ "$key" = VmRSS: ]; then
-   [ "$unit" = kB ] || return 1
+  if [ "$key" = "$expected" ]; then
+   [ "$unit" = kB ] && [ -z "$kb" ] || return 1
    kb=$value
-   break
   fi
- done < "/proc/$1/status"
+ done
  case "$kb" in ''|*[!0-9]*) return 1;; esac
+ [ "$kb" -le 9007199254740991 ] || return 1
  printf '%s\n' "$((kb * 1024))"
 }
-fd_count() {
+rss_bytes() { rss_bytes_from_report < "/proc/$1/smaps_rollup"; }
+anonymous_bytes() { rss_bytes_from_report Anonymous: < "/proc/$1/smaps_rollup"; }
+file_status_bytes() { rss_bytes_from_report RssFile: < "/proc/$1/status"; }
+`
+
+const dockerResourceProbe = "set -eu\n" + dockerRSSProbe + `fd_count() {
  entries=$(find "/proc/$1/fd" -mindepth 1 -maxdepth 1 -printf '.')
  printf '%s\n' "${#entries}"
 }
@@ -96,6 +104,10 @@ func (t *DockerTarget) privateHealth(ctx context.Context, apiID string) (*Docker
 	if err != nil {
 		return nil, err
 	}
+	return parsePrivateHealth(data)
+}
+
+func parsePrivateHealth(data []byte) (*DockerPrivateHealth, error) {
 	split := strings.LastIndexByte(string(data), '\n')
 	if split < 0 {
 		return nil, errors.New("private health HTTP observation unavailable")
@@ -131,6 +143,10 @@ func (t *DockerTarget) resourceSnapshot(ctx context.Context, id, role string) (D
 	if err != nil {
 		return DockerResourceSnapshot{}, nil, err
 	}
+	return parseResourceSnapshot(data, role)
+}
+
+func parseResourceSnapshot(data []byte, role string) (DockerResourceSnapshot, *int, error) {
 	var wire struct {
 		RSSBytes           *uint64 `json:"rss_bytes"`
 		FDCount            *uint64 `json:"fd_count"`

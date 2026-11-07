@@ -47,6 +47,73 @@ class ActionOutputTests(unittest.TestCase):
 
             self.assertFalse((output / "image.json").exists())
 
+    def test_verified_image_records_selected_cache_sources_without_claiming_a_hit(self) -> None:
+        source = "ghcr.io/swimmwatch/openwhispr-whisper-server-buildcache-api@sha256:" + "c" * 64
+        record = {
+            "schema_version": 1,
+            "policy": "trusted-main-v1",
+            "role": "api",
+            "platform": "linux/amd64",
+            "status": "available",
+            "sources": [source],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "containers").mkdir()
+            (root / "containers/build-inputs.json").write_text("{}")
+            cache_record = root / "cache.json"
+            cache_record.write_text(json.dumps(record))
+            with (
+                patch.object(artifacts, "ROOT", root),
+                patch.object(artifacts, "extract"),
+                patch.object(
+                    artifacts,
+                    "inspect_layout",
+                    return_value={"manifest_digest": "sha256:" + "a" * 64},
+                ),
+                patch.object(artifacts, "runtime_identity", return_value="sha256:" + "b" * 64),
+            ):
+                artifacts.record_image(
+                    root,
+                    "1" * 40,
+                    False,
+                    "sha256:" + "a" * 64,
+                    cache_record=cache_record,
+                    role="api",
+                )
+            metadata = json.loads((root / "image.json").read_bytes())
+            self.assertFalse(metadata["cold"])
+            self.assertEqual(metadata["build_cache"]["sources"], [source])
+            self.assertEqual(metadata["build_cache"]["policy"], "trusted-main-v1")
+            self.assertEqual(metadata["build_cache"]["status"], "available")
+
+    def test_cold_or_mismatched_role_rejects_cache_before_recording_an_image(self) -> None:
+        record = {
+            "schema_version": 1,
+            "policy": "trusted-main-v1",
+            "role": "api",
+            "platform": "linux/amd64",
+            "status": "available",
+            "sources": [
+                "ghcr.io/swimmwatch/openwhispr-whisper-server-buildcache-api@sha256:" + "c" * 64
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            cache_record = output / "cache.json"
+            cache_record.write_text(json.dumps(record))
+            for cold, role in ((True, "api"), (False, "backend"), (False, None)):
+                with (
+                    self.subTest(cold=cold, role=role),
+                    patch.object(artifacts, "extract") as extract,
+                    self.assertRaises(ValueError),
+                ):
+                    artifacts.record_image(
+                        output, "1" * 40, cold, cache_record=cache_record, role=role
+                    )
+                extract.assert_not_called()
+                self.assertFalse((output / "image.json").exists())
+
     def test_native_secret_report_is_sanitized_and_missing_or_malformed_reports_fail(self) -> None:
         raw = {
             "SchemaVersion": 2,

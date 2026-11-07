@@ -14,9 +14,72 @@ Pre-release candidates remain GPU-unqualified until both target acceptance suite
   canonical Compose target and an explicitly opted-in real GPU resident baseline.
 - Pinned official OpenAI SDK transport probe with bounded public fixtures,
   deadlines, retry/redirect controls and sanitized client evidence.
+- Project, operator and Helm guides with explicit qualification limits, plus an
+  official-source Go/Kubernetes code review checklist.
+
+### Changed
+
+- Share role-separated registry build caches from trusted CI runs, with staged
+  digest-verified promotion, exportable Go module layers and separate cold audits;
+  release candidates retain their existing cold-build gate.
+- Centralize canonical WAV encoding, validation and byte limits across decoding,
+  private inference and command assembly; retain native-only padding and distinct
+  decoder/supervisor process lifecycles.
+- Reuse the pinned validator's aliases and partial-struct validation instead of
+  mirrored field rules; share verified model records through the domain rather
+  than coupling the supervisor to model provisioning.
+- Share bounded private-response ownership and synchronous acceptance-command
+  cleanup, using standard one-time, slice, hashing and deep-copy operations where
+  they replace equivalent custom code.
+- Remove unused model-cache state, redundant scanner-policy files and repeated
+  release input loading; keep shared evidence validation independent of the
+  release qualification CLI.
+
+### Security
+
+- Remove the obsolete GoSec exception for the replaced backend WAV validator;
+  remaining scoped exceptions retain their existing expiry and restrictions.
+- Update Echo to v5.4.1 and remove obsolete v5.4.0 advisory exceptions; current Go
+  scanning finds no reachable or imported-package vulnerabilities. Published
+  images and unresolved native-component findings are not repaired by this update.
+- Prevent registry Basic/Bearer credentials from following redirects.
+- Reject incomplete scanner coverage and malformed findings instead of treating
+  them as clean evidence; the pinned Trivy inline-misconfiguration suppression
+  gap remains explicitly unresolved.
+- Exclude unused vulnerable FFmpeg video decoder entries, including all shared
+  Huffyuv variants, without removing advertised audio formats.
+- Apply exact Ubuntu security-package fixes, including apt/libapt, Brotli,
+  PCRE2/zlib and affected OS packages inherited from the CUDA runtime base;
+  disable retries while bootstrapping vulnerable APT, retaining that mitigation in
+  builder stages and restoring configured runtime-stage retries after the APT fix.
+- Reject unchecked extra runtime platforms in OCI release artifacts.
+- Read back uploaded release assets before marking a stable release latest.
+- Exclude all advertised media extensions and mixed-case recordings from Docker
+  build context and ordinary Git additions, preserving explicit public fixtures.
 
 ### Fixed
 
+- Bound early HTTP replies and slow response writes so stalled clients cannot
+  retain request-body connections or upload admission indefinitely.
+- Release completed FIFO execution ownership before returning its result, avoiding
+  spurious queue-full replies for the next request when waiting capacity is zero.
+- Pin inference to the backend generation observed by its application owner, so a
+  second health check cannot dispatch to a different generation and falsely
+  acknowledge cancellation cleanup.
+- Preserve very small valid temperatures across the private HTTP and native
+  float32 boundaries without fixed-decimal expansion or native underflow errors.
+- Avoid cleanup-deadline overflow and apply the loader's duration bounds to typed
+  configuration validation as well.
+- Recover an interrupted chart publication's initially unknown OCI digest while
+  preserving immutable artifact checks.
+- Retire owned scanner and acceptance-command subprocess groups, enforce output
+  bounds, and reject malformed public replies or incomplete observer evidence.
+- Scope scratch observations to owned descendants and keep race-enabled fake CLI
+  dispatch bounded without disabling race detection or extending service budgets.
+- Restore package installation with a currently published, exact Ubuntu CA pin.
+- Share Docker build layers across pull requests using a default-branch BuildKit
+  cache instead of isolated per-PR archives. Keep separate API/backend scopes,
+  cached intermediate native stages and cold release qualification.
 - Refresh completed inference health under serialized observation ownership so a
   cached or late owned-Busy response cannot reject the next healthy request.
   Preserve nonblocking probes, dependency failure checks and operation deadlines.

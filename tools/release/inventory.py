@@ -106,8 +106,9 @@ def main() -> int:
                 or args.helm is None
             ):
                 raise ValueError("Artifact inputs are required")
+            metadata = json.loads(args.source.read_bytes())
             data = assemble(
-                json.loads(args.source.read_bytes()),
+                metadata,
                 {
                     role: json.loads((args.accepted / role / "image.json").read_bytes())
                     for role in ("api", "backend")
@@ -116,7 +117,6 @@ def main() -> int:
                 json.loads((ROOT / "containers/build-inputs.json").read_bytes()),
                 json.loads(args.approved.read_bytes()) if args.approved else None,
             )
-            metadata = json.loads(args.source.read_bytes())
             select(data, metadata["stage"], args.current, args.accepted, args.output, args.helm)
             if metadata["stage"] == "stable":
                 data["rendered_equivalence"] = {
@@ -128,7 +128,6 @@ def main() -> int:
                 raise ValueError("Security evidence and stage are required")
             data = json.loads(args.inventory.read_bytes())
             qualify(data, json.loads(args.security.read_bytes()), args.stage)
-        args.inventory.parent.mkdir(parents=True, exist_ok=True)
         save(args.inventory, data)
     except OSError, ValueError, KeyError, TypeError:
         print("FAIL: release artifacts or qualification do not match", file=sys.stderr)

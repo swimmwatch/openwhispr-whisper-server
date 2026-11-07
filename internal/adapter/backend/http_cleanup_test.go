@@ -2,10 +2,12 @@ package backend
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -95,6 +97,25 @@ func TestPrivateUnreadBodyCleanup(t *testing.T) {
 				t.Error("rejected upload retained scratch, reached native inference or changed the resident child")
 			}
 		})
+	}
+}
+
+func TestPrivateResponseWithMaximumCleanupTimeout(t *testing.T) {
+	opts, _, _ := supervisorOptions(t)
+	// The configuration accepts any whole-second duration representable by Go.
+	opts.CleanupTimeout = time.Duration(math.MaxInt64/int64(time.Second)) * time.Second
+	s := runningSupervisor(t, opts)
+	server := httptest.NewServer(s.Handler())
+	t.Cleanup(server.Close)
+	client := &http.Client{Timeout: opts.OperationTimeout}
+	response, err := client.Do(privateRequest(t, s, server.URL))
+	if err != nil {
+		t.Fatal("large cleanup budget prevented the inference response", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("fixture transcript")) {
+		t.Fatalf("large cleanup budget changed the inference response: status=%d body=%q error=%v", response.StatusCode, body, err)
 	}
 }
 

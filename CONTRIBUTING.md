@@ -1,9 +1,11 @@
 # Contributing
 
-This project is in bootstrap development. The approved first release packages
-an unchanged OpenWhispr/whisper.cpp backend with a Go HTTP API and a Helm chart
-for NVIDIA GPU transcription in Resident mode. See the [specification](docs/specs/gpu-whisper-server/spec.md)
-and [packet checklist](docs/specs/gpu-whisper-server/tasks/todo.md).
+This project packages an unchanged OpenWhispr/whisper.cpp backend with a Go HTTP
+API and a Helm chart for NVIDIA GPU transcription in Resident mode. Start with the
+[README](<README.md>) and [documentation index](<docs/README.md>); requirements live
+in the [specification](<docs/specs/gpu-whisper-server/spec.md>). Published artifacts
+are not fully qualified: read the [release limitations](<docs/verification/release-1.0.0-notes.md>)
+and keep historical evidence separate from changes in your checkout.
 
 ## Local setup and checks
 
@@ -22,11 +24,37 @@ owned by the affected packet as well. Temporary scripts, probes and dependencies
 under ignored `.local/`; they are not contributor or CI prerequisites. The uv
 project environment uses the standard ignored `.venv/` directory.
 
-Future GPU acceptance requires a Linux NVIDIA host, compatible NVIDIA driver
-and container runtime; Kubernetes acceptance additionally requires NVIDIA GPU
-scheduling. RTX 2060 is the target home-lab card. Hardware-free bootstrap checks
-do not establish GPU compatibility. Image builds, Helm checks and actual Go
-tests and their qualification status are documented in the owning packets.
+## Go service checks
+
+Use the actual pinned compiler on PATH; an older shim with `GOTOOLCHAIN=local`
+does not select it automatically. From the repository root:
+
+```sh
+GOTOOLCHAIN=local go version
+gofmt -l cmd internal tests
+GOTOOLCHAIN=local GOWORK=off go vet ./...
+GOTOOLCHAIN=local GOWORK=off go test ./cmd/... ./internal/... ./tests/integration -count=1
+GOTOOLCHAIN=local GOWORK=off go test -race ./cmd/... ./internal/... -count=1
+```
+
+Format any files listed by `gofmt` before submitting. Some behavior tests use
+FFmpeg or other native tools; report missing prerequisites and skips explicitly.
+Image/chart integration tests require their opt-in harness inputs. A default test
+run that skips those checks is not their pass. See the
+[acceptance harness guide](<tests/acceptance/README.md>) for separate CPU-helper and
+GPU commands, and [release checks](<docs/releases.md#local-commands>) for pinned
+tooling. Do not run GPU or cluster opt-ins against an unconfirmed shared target.
+
+Actual GPU acceptance requires a Linux NVIDIA host and compatible driver/runtime;
+Kubernetes additionally requires GPU scheduling, CNI and storage prerequisites.
+The required targets are RTX 5070 Ti Laptop GPU (Docker) and RTX 2060 (Kubernetes).
+Source tests, image builds and Helm rendering do not establish GPU compatibility.
+Use the [code review checklist](<docs/code-review.md>) for Go and Kubernetes/Helm
+review; it does not replace tests or runtime qualification.
+
+RTK is optional contributor tooling, not a service/build dependency. Agent shell
+commands follow the repository's `rtk proxy` convention; ordinary contributor
+commands above do not require it.
 
 ## Python tooling
 
@@ -125,8 +153,10 @@ Discuss material scope or architecture changes in an issue before implementation
 Keep changes focused on the approved requirements. Create a `feature/` branch,
 use English identifiers, comments and documentation, and open a pull request.
 Describe the behavior changed, related requirement/issue, actual checks run and
-any checks unavailable. Required CI names will be configured after the workflows
-exist; never bypass a failing required check.
+any failed, skipped or unavailable checks. See [CI and release automation](<docs/releases.md>)
+for the existing jobs; documentation does not verify current remote branch-protection
+settings. Never bypass a failing required check or relabel an old artifact's result
+as qualification for changed source.
 
 Do not commit credentials, models, private recordings, transcripts, agent history
 or generated build output. Use synthetic or explicitly public fixtures. Follow

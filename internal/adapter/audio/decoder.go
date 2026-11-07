@@ -3,10 +3,8 @@ package audio
 import (
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"io"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,19 +15,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/application/transcription"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"golang.org/x/sys/unix"
-)
-
-const (
-	waveHeaderBytes   = 44
-	riffSizeOverhead  = waveHeaderBytes - 8
-	pcmSampleRate     = 16000
-	pcmChannels       = 1
-	pcmBitsPerSample  = 16
-	pcmBlockBytes     = pcmChannels * pcmBitsPerSample / 8
-	pcmBytesPerSecond = pcmSampleRate * pcmBlockBytes
 )
 
 type Options struct {
@@ -131,11 +120,11 @@ func (d *Decoder) Normalize(parent context.Context, input transcription.Input) (
 		}
 	}()
 
-	if _, err = file.Write(make([]byte, waveHeaderBytes)); err != nil {
+	if _, err = file.Write(make([]byte, wav.HeaderBytes)); err != nil {
 		return result, audioFailure(domain.Internal, err)
 	}
 
-	pcm := &pcmOutput{file: file, limit: decodedDataLimit(d.opts.DecodedSeconds), cancel: cancel}
+	pcm := &pcmOutput{file: file, limit: wav.MaxDataBytes(d.opts.DecodedSeconds), cancel: cancel}
 	cmd := d.command(ctx, filepath.Dir(input.UploadPath), source, pcm)
 	if err = cmd.Start(); err != nil {
 		return result, audioFailure(domain.BackendUnavailable, err)
@@ -156,12 +145,12 @@ func (d *Decoder) Normalize(parent context.Context, input transcription.Input) (
 	if writeErr != nil {
 		return result, audioFailure(domain.Internal, writeErr)
 	}
-	if waitErr != nil || written == 0 || written%pcmBlockBytes != 0 {
+	if waitErr != nil || written == 0 || written%wav.FrameBytes != 0 {
 		return result, audioFailure(domain.UnsupportedAudio, waitErr)
 	}
 
-	header := waveHeader(uint32(written))
-	if _, err = file.WriteAt(header, 0); err != nil {
+	header := wav.Header(uint32(written))
+	if _, err = file.WriteAt(header[:], 0); err != nil {
 		return result, audioFailure(domain.Internal, err)
 	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
@@ -171,20 +160,11 @@ func (d *Decoder) Normalize(parent context.Context, input transcription.Input) (
 	owned = true
 	return transcription.Normalized{
 		Audio:     output,
-		Size:      waveHeaderBytes + written,
-		Duration:  time.Duration(written/pcmBlockBytes) * time.Second / pcmSampleRate,
+		Size:      wav.HeaderBytes + written,
+		Duration:  time.Duration(written/wav.FrameBytes) * time.Second / wav.SampleRate,
 		RequestID: input.RequestID,
 		Fields:    input.Fields,
 	}, nil
-}
-
-func decodedDataLimit(seconds int) int64 {
-	maxData := int64(math.MaxUint32) - riffSizeOverhead
-	if int64(seconds) <= maxData/pcmBytesPerSecond {
-		maxData = int64(seconds) * pcmBytesPerSecond
-	}
-	maxData -= maxData % pcmBlockBytes
-	return maxData
 }
 
 func (d *Decoder) command(ctx context.Context, directory string, source io.Reader, pcm *pcmOutput) *exec.Cmd {
@@ -224,8 +204,8 @@ func decoderArgs() []string {
 		"-vn",
 		"-sn",
 		"-dn",
-		"-ac", strconv.Itoa(pcmChannels),
-		"-ar", strconv.Itoa(pcmSampleRate),
+		"-ac", strconv.Itoa(wav.Channels),
+		"-ar", strconv.Itoa(wav.SampleRate),
 		"-c:a", "pcm_s16le",
 		"-f", "s16le",
 		"pipe:1",
@@ -234,23 +214,6 @@ func decoderArgs() []string {
 
 func audioFailure(kind domain.FailureKind, cause error) error {
 	return &domain.Failure{Kind: kind, Cause: cause}
-}
-
-func waveHeader(size uint32) []byte {
-	h := make([]byte, waveHeaderBytes)
-	copy(h, "RIFF")
-	binary.LittleEndian.PutUint32(h[4:], size+riffSizeOverhead)
-	copy(h[8:], "WAVEfmt ")
-	binary.LittleEndian.PutUint32(h[16:], 16)
-	binary.LittleEndian.PutUint16(h[20:], 1)
-	binary.LittleEndian.PutUint16(h[22:], pcmChannels)
-	binary.LittleEndian.PutUint32(h[24:], pcmSampleRate)
-	binary.LittleEndian.PutUint32(h[28:], pcmBytesPerSecond)
-	binary.LittleEndian.PutUint16(h[32:], pcmBlockBytes)
-	binary.LittleEndian.PutUint16(h[34:], pcmBitsPerSample)
-	copy(h[36:], "data")
-	binary.LittleEndian.PutUint32(h[40:], size)
-	return h
 }
 
 func reapGroup(pid int, budget time.Duration) error {

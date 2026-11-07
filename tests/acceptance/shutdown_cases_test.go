@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -16,38 +17,62 @@ func TestLocalQueuedOperationDeadline(t *testing.T) {
 
 func runQueuedOperationDeadline(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
-	// The client observes the complete documented cleanup window; this does not
-	// extend the actual service's one-second reduced operation deadline.
-	ctx, cancel := context.WithCancel(e.ctx)
+	runQueuedDeadlineWorkload(t, queueWorkload{
+		ctx: e.ctx, model: e.settings.Models.Served, short: e.audio,
+		long:   readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes),
+		client: func(t *testing.T, id string) *PublicClient { return identifiedLocalClient(t, e, id) },
+		logs:   func(ctx context.Context) ([]byte, error) { return e.target.Logs(ctx, "api") },
+		released: func(ctx context.Context) error {
+			state, err := e.target.Observe(ctx)
+			if err != nil {
+				return err
+			}
+			return releasedAPIResources(state)
+		},
+	}, time.Duration(e.settings.Timeouts.CleanupSeconds+e.settings.Timeouts.OperationSeconds+5)*time.Second, func() { waitLifecycleHealthy(t, e) })
+}
+
+func runQueuedDeadlineWorkload(t *testing.T, work queueWorkload, observationWindow time.Duration, recoverHealth func()) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(work.ctx)
 	defer cancel()
-	longest := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
-	active := submitIdentified(t, e, ctx, "expiry-active", longest, "longest.flac")
-	waitLocalQueueEvent(t, e, "queue_dispatched", "expiry-active")
-	waiting := submitIdentified(t, e, ctx, "expiry-waiting", e.audio, "jfk.wav")
-	waitLocalQueueEvent(t, e, "queue_admitted", "expiry-waiting")
+	active := submitPublicRequest(ctx, work.client(t, "expiry-active"), work.model, work.long, "longest.flac")
+	waitQueueEvent(t, ctx, work.logs, "queue_dispatched", "expiry-active")
+	waiting := submitPublicRequest(ctx, work.client(t, "expiry-waiting"), work.model, work.short, "jfk.wav")
+	waitQueueEvent(t, ctx, work.logs, "queue_admitted", "expiry-waiting")
 	for _, done := range []<-chan asyncPublicReply{active, waiting} {
 		select {
 		case result := <-done:
 			if result.err != nil || result.reply.Status != http.StatusRequestTimeout || result.reply.ErrorCode != "operation_timeout" {
 				t.Fatal("reduced active/queued operation did not return its canonical deadline failure")
 			}
-		case <-time.After(time.Duration(e.settings.Timeouts.CleanupSeconds+e.settings.Timeouts.OperationSeconds+5) * time.Second):
+		case <-time.After(observationWindow):
 			t.Fatal("deadline workload exceeded its declared operation plus cleanup observation window")
+		case <-ctx.Done():
+			t.Fatal("deadline workload cancelled")
 		}
 	}
-	waitLifecycleHealthy(t, e)
-	logs, err := e.target.Logs(e.ctx, "api")
+	recoverHealth()
+	logs, err := work.logs(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := observedQueueIDs(logs, "queue_dispatched", "expiry-")
-	if len(ids) != 1 || ids[0] != "expiry-active" {
-		t.Fatal("expired waiting work entered native inference")
+	if err := validateDeadlineQueueOrder(logs); err != nil {
+		t.Fatal(err)
 	}
-	state, err := e.target.Observe(e.ctx)
-	if err != nil || releasedAPIResources(state) != nil {
-		t.Fatal("operation expiry retained API request resources")
+	if work.released(ctx) != nil {
+		t.Fatal("operation expiry retained API request resources or observation was unavailable")
 	}
+}
+
+func validateDeadlineQueueOrder(logs []byte) error {
+	admitted := observedQueueIDs(logs, "queue_admitted", "expiry-")
+	dispatched := observedQueueIDs(logs, "queue_dispatched", "expiry-")
+	if len(admitted) != 2 || admitted[0] != "expiry-active" || admitted[1] != "expiry-waiting" ||
+		len(dispatched) != 1 || dispatched[0] != "expiry-active" {
+		return errors.New("deadline admission or dispatch order was incorrect")
+	}
+	return nil
 }
 
 func TestLocalActiveAPIShutdown(t *testing.T) {
@@ -61,7 +86,7 @@ func runActiveAPIShutdown(t *testing.T, e *acceptanceEnvironment, mode string) {
 	before := readyLifecycleSnapshot(t, e)
 	finishTrace := watchLifecycleReplacement(t, e, before)
 	longest := readLocalAudio(t, filepath.Join(e.selection.FixtureDirectory, "jfk-900.flac"), e.settings.Limits.AudioBytes)
-	active := startLifecycleCall(t, e, longest, "longest.flac")
+	active := startLifecycleCall(t, e, before, longest, "longest.flac")
 	waitLifecycleBusy(t, e, active, before.PrivateHealth.ProcessGeneration)
 	ctx, cancel := context.WithCancel(e.ctx)
 	defer cancel()

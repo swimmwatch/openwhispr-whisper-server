@@ -81,8 +81,11 @@ func TestGPUQueryBoundsAndCancellation(t *testing.T) {
 
 			if mode == "blocked" {
 				await(t, func() bool {
-					_, err := os.Stat(filepath.Join(root, "probe-pid"))
-					return err == nil
+					// Opening the PID file creates it before WriteFile publishes the
+					// process identity. Do not cancel the child during that window.
+					data, err := os.ReadFile(filepath.Join(root, "probe-pid"))
+					pid, parseErr := strconv.Atoi(string(data))
+					return err == nil && parseErr == nil && pid > 0
 				})
 				cancel()
 			}

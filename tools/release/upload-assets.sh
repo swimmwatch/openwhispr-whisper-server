@@ -25,20 +25,23 @@ else
   if [ "$RELEASE_STAGE" = candidate ]; then
     flags+=(--prerelease --latest=false --notes 'GPU qualification in Docker and Kubernetes is pending.')
   else
-    flags+=(--latest --generate-notes)
+    flags+=(--latest=false --generate-notes)
   fi
   gh release create "$RELEASE_TAG" "${flags[@]}"
   gh release view "$RELEASE_TAG" --json isPrerelease,assets > "$RUNNER_TEMP/release.json"
 fi
 
+existing=$(mktemp -d "${RUNNER_TEMP:?}/release-asset.XXXXXX")
+trap 'rm -rf -- "$existing"' EXIT
 for file in "$STATE_FILE" "$CHART_DIR"/*.tgz "$checksums"; do
   name=$(basename "$file")
-  if jq -e --arg name "$name" '.assets | any(.name == $name)' "$RUNNER_TEMP/release.json" > /dev/null; then
-    existing=$(mktemp -d "$RUNNER_TEMP/release-asset.XXXXXX")
-    gh release download "$RELEASE_TAG" --pattern "$name" --dir "$existing"
-    cmp "$file" "$existing/$name"
-    rm -rf "$existing"
-  else
+  if ! jq -e --arg name "$name" '.assets | any(.name == $name)' "$RUNNER_TEMP/release.json" > /dev/null; then
     gh release upload "$RELEASE_TAG" "$file"
   fi
+  gh release download "$RELEASE_TAG" --pattern "$name" --dir "$existing"
+  cmp "$file" "$existing/$name"
 done
+
+if [ "$RELEASE_STAGE" = stable ]; then
+  gh release edit "$RELEASE_TAG" --latest
+fi

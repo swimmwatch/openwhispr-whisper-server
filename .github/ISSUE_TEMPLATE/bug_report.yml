@@ -3,12 +3,12 @@ description: Report an ordinary bug or ask a configuration question.
 body:
   - type: markdown
     attributes:
-      value: "For vulnerabilities use the private security link. Never include credentials, private audio or transcripts. Use synthetic reproductions and sanitized logs."
+      value: "For suspected vulnerabilities, use [private reporting](https://github.com/swimmwatch/openwhispr-whisper-server/security/advisories/new), not an issue. Start with the [operator guide](https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/operations.md). Never include credentials, private paths/cluster identities, audio or transcripts. Use synthetic or public reproductions and sanitized logs."
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: Source revision, component versions, GPU and runtime details.
+      description: Release/source revision, exact API/backend image and chart identities, GPU/driver, Docker/Compose or Kubernetes/Helm versions. Omit private host/cluster identifiers.
     validations:
       required: true
   - type: textarea
@@ -22,5 +22,6 @@ body:
     id: behavior
     attributes:
       label: Expected and observed behavior
+      description: Include readiness state and HTTP status/error code when relevant. Distinguish failed, skipped and unavailable checks; do not paste private response content.
     validations:
       required: true

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from tools.release.oci import inspect_layout, sha
+from tools.release.oci import blob, inspect_layout, sha
 
 SOURCE = "1" * 40
 
@@ -76,6 +76,23 @@ class OCIMetadataTests(unittest.TestCase):
         self.assertEqual(metadata["labels"], self.labels)
         self.assertEqual(metadata["index_annotations"], self.labels)
         self.assertEqual(metadata["platform_annotations"], self.labels)
+
+    def test_uninspected_runtime_platform_cannot_hide_in_the_published_index(self) -> None:
+        self.write_layout()
+        index = json.loads((self.layout / "index.json").read_bytes())
+        selected = json.loads(blob(self.layout, index["manifests"][0]))
+        selected["manifests"].append(
+            {
+                "digest": "sha256:" + "0" * 64,
+                "size": 123,
+                "platform": {"architecture": "arm64", "os": "linux"},
+            }
+        )
+        (self.layout / "index.json").write_text(
+            json.dumps({"manifests": [self.descriptor(selected)]})
+        )
+        with self.assertRaisesRegex(ValueError, "Unsupported OCI manifest"):
+            inspect_layout(self.layout, SOURCE)
 
     def test_conflicting_registry_metadata_is_rejected(self) -> None:
         for component in ("index", "manifest"):

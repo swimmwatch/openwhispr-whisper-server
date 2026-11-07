@@ -19,6 +19,7 @@ import (
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/audio"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/httpapi"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/upstream"
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/application/transcription"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
@@ -32,9 +33,6 @@ const (
 	healthInterval      = 100 * time.Millisecond
 	fatalExitWait       = 100 * time.Millisecond
 	uploadCloseInterval = 5 * time.Millisecond
-	wavHeaderBytes      = 44
-	wavBytesPerSecond   = 32000
-	maxRIFFFileBytes    = int64(math.MaxUint32) + 8
 )
 
 type runtimeOptions struct {
@@ -105,7 +103,7 @@ func run(ctx context.Context, args, environ []string, out io.Writer, runtime run
 	operation := time.Duration(settings.Timeouts.OperationSeconds) * time.Second
 	cleanup := time.Duration(settings.Timeouts.CleanupSeconds) * time.Second
 	drain := time.Duration(settings.Timeouts.ShutdownSeconds) * time.Second
-	waveBytes := maxWAVBytes(settings.Limits.DecodedSeconds)
+	waveBytes := wav.MaxFileBytes(settings.Limits.DecodedSeconds)
 	client, err := upstream.New(upstream.Options{
 		URL:              settings.API.BackendURL,
 		Fingerprint:      fingerprint,
@@ -292,14 +290,6 @@ func serve(
 	}
 
 	return errors.Join(result, serviceErr)
-}
-
-// Classic RIFF/WAV has a 32-bit size field, even with a larger duration budget.
-func maxWAVBytes(decodedSeconds int) int64 {
-	if int64(decodedSeconds) > (maxRIFFFileBytes-wavHeaderBytes)/wavBytesPerSecond {
-		return maxRIFFFileBytes
-	}
-	return wavHeaderBytes + int64(decodedSeconds)*wavBytesPerSecond
 }
 
 func shutdownBudget(drain, cleanup time.Duration) time.Duration {

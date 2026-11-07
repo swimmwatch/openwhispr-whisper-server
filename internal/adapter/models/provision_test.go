@@ -142,6 +142,13 @@ func TestPreparedArtifact(t *testing.T) {
 	if err := os.WriteFile(path, data, 0444); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(path, 0444); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var requests atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -162,10 +169,16 @@ func TestPreparedArtifact(t *testing.T) {
 			t.Fatalf("prepared-only wrote cache: %v", err)
 		}
 
-		got, _ := os.ReadFile(path)
-		info, _ := os.Stat(path)
-		if string(got) != string(data) || info.Mode().Perm() != 0444 {
-			t.Fatal("prepared file modified")
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != string(data) {
+			t.Fatal("prepared file bytes changed", err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode() != original.Mode() || !os.SameFile(original, info) {
+			t.Fatal("prepared file permissions or identity changed")
 		}
 
 		opts.Models.Catalog[0].Source.SHA256 = strings.Repeat("a", 64)

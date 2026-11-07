@@ -9,7 +9,10 @@ cached dirty-checkout builds do not qualify a release or GPU acceptance.
 
 `.github/workflows/ci.yml` runs only on pull requests, without path filters,
 secrets, write tokens or GPU runners. Pushing or merging to `main` does not start
-another CI run, and there is no manual CI trigger. It includes `source`, `chart`, `build-api`,
+another qualification CI run, and there is no manual CI trigger. The separate
+`Docker layer cache` workflow draft is intended to refresh shared image layers on
+relevant `main` pushes or manual dispatch on `main`; it does not qualify or publish
+a release. PR CI includes `source`, `chart`, `build-api`,
 `build-backend`, image runtime/license checks and the aggregate `Security Check`.
 The aggregate rejects failed, cancelled, skipped and missing dependencies.
 
@@ -87,7 +90,7 @@ without cancellation.
 | `CI_TOOL_JOBS=N`, installer `--jobs` | Concurrent checksum-verified tool downloads/installation, capped by the number of tools. |
 | `CI_BUILD_PARALLELISM=N` | Pass available CPU count to setup-buildx's `buildkitd-config-inline`; local builds also accept `--parallelism`. |
 | Native `BUILD_JOBS` | Keep existing automatic CPU/quota/RAM sizing; do not override it with an unsafe CPU-only count. |
-| PR layer cache | Local OCI cache, `mode=max,compression=zstd,compression-level=3`; rotate to avoid accumulating old blobs. |
+| Image layer cache (approved target; migration pending) | Native GHCR registry backend (`type=registry`, export `mode=max`); separate per-role packages, tag `main-linux-amd64-v1`, trusted `main` writers only. |
 | Image artifact compression | Keep `compression-level: 0` for already compressed OCI archives. |
 | `SEGMENT_DOWNLOAD_TIMEOUT_MINS` | Five-minute cache segment timeout; required build/scan checks still run. |
 
@@ -119,21 +122,111 @@ unconditional cleanup removes raw data. Aggregate secret/image scans retain the
 private-output wrapper because their report redaction and input bindings are
 project requirements.
 
-Layer caches are PR-only, scoped by role, tool/build/module inputs and source
-revision. Main builds use exclusive builders, `no-cache: true` and no retained
-builder state, importing/exporting no layer or compiler cache. The local build CLI rejects cache arguments together with
-`--cold`. This preserves trusted release qualification. External layer caches do
-not persist `RUN --mount=type=cache` compiler/module contents; unchanged build
-layers can still be reused. See [Docker local caches](https://docs.docker.com/build/cache/backends/local/),
-[BuildKit parallelism](https://docs.docker.com/build/buildkit/configure/#max-parallelism)
-and the pinned [cache action/scoping rules](https://github.com/actions/cache/tree/cdf6c1fa76f9f475f3d7449005a359c84ca0f306).
+### Shared GHCR build cache
 
-Local validation passed 100 tooling tests and actual BuildKit cache export/import
-with a cached COPY layer and preserved OCI SBOM/provenance. Installing five
-pinned tool/schema sets took 6.383s with network downloads and 0.515s from the
-verified cache on the same machine. These are local installer measurements;
-GitHub cache transfer, full CUDA compilation and end-to-end CI latency were not
-benchmarked. Current remote qualification remains incomplete.
+The local implementation replaces the earlier shared GitHub Actions (`type=gha`)
+cache draft in place, rather than adding a second provider. It uses BuildKit's
+native registry cache (`type=registry`, export `mode=max`) in separate
+`ghcr.io/<owner>/<cache-prefix>-api` and `ghcr.io/<owner>/<cache-prefix>-backend`
+packages, both tagged `main-linux-amd64-v1`. These are cache packages, not release
+image repositories. Stable role/platform references allow reuse across PRs;
+BuildKit invalidates layers from their instructions and inputs, not a source-SHA
+cache namespace. `mode=max` includes intermediate FFmpeg/CUDA stages.
+
+The trust boundary is:
+
+- PR jobs import public cache anonymously, without login, package write permission
+  or cache export. Untrusted PR output never updates shared cache references.
+- Only the cache-only workflow on trusted `main` pushes or manual dispatch on
+  `main` may write. Only writer jobs receive `packages: write` and authenticate
+  using the existing SHA-pinned `docker/login-action` and `GITHUB_TOKEN`.
+- Writers stage cache output, verify the exported OCI digest and actual
+  SBOM/provenance, then promote the shared cache reference. Failed build or OCI
+  verification must leave that reference unchanged. Cache refreshes stay
+  serialized without cancelling an in-progress seed.
+- Keep the existing pinned official Actions and toolchains; introduce no new
+  JavaScript/Docker Action or cache provider. Cache refresh is not release image
+  publication and replaces no source, runtime, security or release gate.
+
+Go module downloads now occupy normal dependency layers in both Dockerfiles,
+separate from application source, so those layers can be exported. Go compiler and
+ccache mounts remain ephemeral builder-local state: `RUN --mount=type=cache`
+contents are not exported/restored by the registry cache. A changed compilation
+step may therefore compile again even after a successful layer-cache import.
+See [registry cache](https://docs.docker.com/build/cache/backends/registry/),
+[cache modes](https://docs.docker.com/build/cache/backends/#cache-mode) and
+[cache mounts](https://docs.docker.com/build/ci/github-actions/cache/#cache-mounts).
+
+### Local state and remote prerequisites
+
+The local helper/workflow wiring and recording of selected immutable cache sources
+are implemented. Local lint/unit checks do not establish GHCR package creation,
+a successful hosted seed, anonymous access, measured CUDA-build speedup or
+security/release qualification. A minimal local fixture on fresh pinned BuildKit
+workers confirmed intermediate dependency-cache reuse, offline recompilation after
+a source change with an empty compiler mount, actual OCI archive SPDX/SLSA, and
+native cache-manifest promotion with digest/byte readback. It did not qualify the
+complete uploaded registry blob/attestation graph or full API/backend images.
+Local Docker 29.9.3 differed from the CI 29.9.2 pin; Buildx/BuildKit matched.
+
+The [maintenance workflow](../.github/workflows/image-cache-maintenance.yml)
+schedules a read-only dry-run weekly (Monday, 04:23 UTC). Manual `apply` defaults
+false; only explicit manual apply gets package write permission. Keep the current
+main digest and newest three versions per package. Only known staging-only
+versions older than seven days and untagged versions older than fourteen days
+are eligible, using the update timestamp conservatively, at most 100 per run.
+Unknown/release tags, missing main or malformed metadata fail closed. The native
+GitHub CLI reads both full lists and revalidates candidates before deletion.
+The workflow shares the writer lock and never targets release packages. GitHub
+requires package admin access as well as token package-write permission. REST
+cannot atomically delete conditionally on tags: external writers must not overlap,
+and a failed apply can leave earlier eligible versions deleted. Review a fresh
+dry-run after failure rather than retrying a stale plan. No remote retention ran.
+
+The [cold-audit workflow](../.github/workflows/image-cold-audit.yml) runs weekly
+(Monday, 03:23 UTC) or manually on `main`. It uses fresh builders without cache
+imports/exports, then actual runtime, chart and scanner checks. Its diagnostic
+artifacts are not selected release images, and a failed audit remains failed.
+
+Before relying on the remote cache, the operator must review intermediate-layer
+contents for public disclosure, create/configure public GHCR cache packages and
+repository writer access, and verify anonymous access from a fork PR. Then retain
+evidence from a successful `main` seed, two independent PR cache imports and RC
+checks under the active cold policy. Check logs for the selected registry cache
+manifest and `CACHED` native/decoder compilation layers; workflow success alone
+does not prove a hit. The first seed, eviction or changed native inputs may require
+a full build. Cached PR execution still exports/verifies fresh OCI metadata and
+runs all normal runtime/security gates. None of these remote checks has run for
+this migration.
+
+Release candidates currently remain exclusive and cold:
+[release.yml](../.github/workflows/release.yml) passes `cold: 'true'`, and release
+inventory validation requires cold image builds. There
+is no retained builder state or imported/exported layer/compiler cache; the local
+build CLI also rejects cache arguments with `--cold`. The user selected a future
+trusted cached RC path, but activation remains pending the formal policy update
+through the currently unavailable workflow MCP. This documentation does not
+change that policy or enable cached RC qualification.
+
+Earlier local-cache validation recorded 100 tooling tests and actual BuildKit
+cache export/import with a cached COPY layer and preserved OCI SBOM/provenance.
+Installing five pinned tool/schema sets took 6.383s with network downloads and
+0.515s from verified cache on the same machine. These historical local results
+are not current migration test results, GHCR evidence or full CUDA-build timings;
+they must not be reattributed to this change.
+
+Current local validation: Ruff format/lint, mypy (43 source files), lock checks,
+Hadolint, actionlint discovery of all six workflows and composite ShellCheck passed.
+The tooling suite ran 198 tests: 191 passed, six production publisher/Helm artifact
+fixtures were not enabled, and one pre-existing Trivy 0.75.0 JSON-suppression gap
+remains an expected failure. Sixteen official-SDK transport fixtures passed.
+An initial fixture failed with a registry-startup connection reset before builders;
+the bounded second execution passed and owned-resource cleanup was confirmed.
+An initial tooling run also failed because the test command supplied a nonexistent
+Helm path; installing the checksum-verified pinned Helm into task-local tools and
+rerunning the complete suite resolved that environment error. These local results
+are not hosted cache-hit evidence, full production image qualification or authority
+to publish or enable cached RC builds.
 
 ## Helm chart metadata
 

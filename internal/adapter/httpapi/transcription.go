@@ -76,6 +76,7 @@ func (v requestValidator) Validate(value any) error {
 }
 
 func (h *Handler) Register(e *echo.Echo) {
+	e.Pre(h.limitResponse)
 	e.Validator = requestValidator{validator.New(validator.WithRequiredStructEnabled())}
 	e.POST(transcriptionsPath, h.transcribe)
 	e.GET("/health/live", func(c *echo.Context) error {

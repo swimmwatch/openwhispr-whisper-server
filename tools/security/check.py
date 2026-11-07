@@ -12,7 +12,7 @@ from typing import Any
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.release.check import digest, fresh, require, source
+from tools.release.validation import digest, fresh, require, source
 from tools.security.check_secrets import evaluate as evaluate_secrets
 from tools.security.exceptions import exception_ref as exception_ref
 from tools.security.exceptions import validate_exceptions as validate_exceptions
@@ -123,10 +123,23 @@ def evaluate(
         )
 
         findings = [item["finding"] for item in raw if "finding" in item]
+        for finding in findings:
+            require(
+                isinstance(finding, dict)
+                and isinstance(finding.get("osv"), str)
+                and bool(finding["osv"])
+                and isinstance(finding.get("trace"), list)
+                and bool(finding["trace"])
+                and all(
+                    isinstance(frame, dict)
+                    and isinstance(frame.get("module"), str)
+                    and bool(frame["module"])
+                    for frame in finding["trace"]
+                ),
+                "Missing Go vulnerability finding reachability",
+            )
         # Only call-level reachability blocks; module/package findings remain visible.
-        blocking = sum(
-            any(frame.get("function") for frame in item.get("trace", [])) for item in findings
-        )
+        blocking = sum(any(frame.get("function") for frame in item["trace"]) for item in findings)
     elif scanner == "gosec":
         require(
             isinstance(raw, dict)
@@ -182,20 +195,42 @@ def evaluate(
             "Unsupported or empty Trivy target",
         )
 
-        field = "Vulnerabilities" if scanner == "trivy-vuln" else "Misconfigurations"
+        vulnerability = scanner == "trivy-vuln"
+        field = "Vulnerabilities" if vulnerability else "Misconfigurations"
+        classes = ("os-pkgs", "lang-pkgs") if vulnerability else ("config",)
         for result in raw["Results"]:
             require(
-                isinstance(result, dict) and isinstance(result.get(field, []), list),
-                "Malformed Trivy result",
+                isinstance(result, dict)
+                and result.get("Class") in classes
+                and isinstance(result.get("Target"), str)
+                and bool(result["Target"])
+                and isinstance(result.get("Type"), str)
+                and bool(result["Type"])
+                and isinstance(result.get(field, []), list),
+                "Missing or unsupported Trivy target coverage",
             )
 
-            findings.extend(
-                item
-                for item in result.get(field, [])
-                if item.get("Status") not in ("PASS", "EXCEPTION")
+            require(
+                result.get("ExperimentalModifiedFindings", []) == [],
+                "Unapproved suppressed scanner findings",
             )
+            for item in result.get(field, []):
+                require(
+                    isinstance(item, dict)
+                    and item.get("Severity") in ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"),
+                    "Malformed Trivy finding severity",
+                )
+                if not vulnerability:
+                    require(item.get("Status") in ("PASS", "FAIL"), "Unsupported Trivy rule status")
+                if vulnerability or item["Status"] == "FAIL":
+                    findings.append(item)
 
-        blocking = sum(item.get("Severity") in ("HIGH", "CRITICAL") for item in findings)
+        # Config scans request --include-non-failures; no evaluated rule is not a clean scan.
+        require(
+            vulnerability or any(result.get(field) for result in raw["Results"]),
+            "Trivy did not evaluate configuration rules",
+        )
+        blocking = sum(item["Severity"] in ("HIGH", "CRITICAL") for item in findings)
         if scanner == "trivy-vuln":
             policies = {
                 (item["rule"], item["path"]): item

@@ -300,24 +300,12 @@ func sendPublicCaseRaw(ctx context.Context, client *PublicClient, body []byte, c
 		return PublicReply{}, errors.New("cannot assemble negative public request")
 	}
 	request.Header.Set("Content-Type", contentType)
+	started := time.Now()
 	response, err := client.client.Do(request)
 	if err != nil {
-		return PublicReply{}, &publicRequestError{err}
+		return PublicReply{PublicDuration: time.Since(started)}, &publicRequestError{err}
 	}
-	defer response.Body.Close()
-	content, err := io.ReadAll(io.LimitReader(response.Body, client.maxReplyBytes+1))
-	if err != nil || int64(len(content)) > client.maxReplyBytes {
-		return PublicReply{}, errors.New("negative public response exceeded observation bound")
-	}
-	var result struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(content, &result) != nil {
-		return PublicReply{}, errors.New("negative public response is not a JSON error")
-	}
-	return PublicReply{Status: response.StatusCode, ErrorCode: result.Error.Code}, nil
+	return client.readReply(response, started)
 }
 
 func TestPublicSpeechObservationRetainsOnlySafeFacts(t *testing.T) {
@@ -488,7 +476,7 @@ func TestPublicCaseRawNegativeReachesHTTP(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = io.WriteString(w, `{"error":{"code":"invalid_request"}}`)
+		_, _ = io.WriteString(w, `{"error":{"message":"safe","type":"invalid_request_error","param":null,"code":"invalid_request"}}`)
 	}))
 	defer server.Close()
 	client, err := NewPublicClient(server.URL, time.Second, 4096)

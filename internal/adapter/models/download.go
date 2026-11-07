@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/config"
 )
 
@@ -19,12 +20,12 @@ const maxDownloadRedirects = 10
 
 var errDownload = errors.New("model download failed")
 
-func (c *artifactCache) download(ctx context.Context, model config.Model, caller *http.Client) (artifact Artifact, err error) {
+func (c *artifactCache) download(ctx context.Context, model config.Model, caller *http.Client) (artifact domain.ModelArtifact, err error) {
 	hash := strings.ToLower(model.Source.SHA256)
 	partial := hash + ".partial-" + rand.Text()
 	file, err := c.artifacts.OpenFile(partial, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 	defer func() {
 		if file != nil {
@@ -48,75 +49,75 @@ func (c *artifactCache) download(ctx context.Context, model config.Model, caller
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, model.Source.URL, nil)
 	if err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return Artifact{}, errDownload
+		return domain.ModelArtifact{}, errDownload
 	}
 
 	digest := sha256.New()
 	reader := contextReader{ctx, response.Body}
 	writer := io.MultiWriter(file, digest)
 	if err := copyModelBytes(writer, reader, model.Source.ExpectedBytes); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	actual := hex.EncodeToString(digest.Sum(nil))
 	if actual != hash {
-		return Artifact{}, errIntegrity
+		return domain.ModelArtifact{}, errIntegrity
 	}
 
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	metadata, err := ReadMetadata(ctx, file)
 	if err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	if err := file.Sync(); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	closeErr := file.Close()
 	file = nil
 	if closeErr != nil {
-		return Artifact{}, closeErr
+		return domain.ModelArtifact{}, closeErr
 	}
 	if err := ctx.Err(); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	name := hash + ".bin"
 	if err := c.artifacts.Rename(partial, name); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	dir, err := c.artifacts.Open(".")
 	if err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
 	syncErr := dir.Sync()
 	closeErr = dir.Close()
 	if err := errors.Join(syncErr, closeErr); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return Artifact{}, err
+		return domain.ModelArtifact{}, err
 	}
 
-	return Artifact{ID: model.ID, Path: filepath.Join(c.path, "artifacts", name), SHA256: actual, Metadata: metadata}, nil
+	return domain.ModelArtifact{ID: model.ID, Path: filepath.Join(c.artifacts.Name(), name), SHA256: actual, Metadata: metadata}, nil
 }
 
 func copyModelBytes(writer io.Writer, reader io.Reader, expected int64) error {

@@ -199,6 +199,34 @@ func TestPublishedBindingObservesEngineAndMountedConfiguration(t *testing.T) {
 	if err := recordPublishedBinding(t.Context(), e); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("startup-failure-retains-immutable-binding-without-readiness", func(t *testing.T) {
+		for role, state := range states {
+			state.Running = false
+			states[role] = state
+		}
+		stateData, _ := json.Marshal(states)
+		t.Setenv("P07_DOCKER_HELPER_INSPECTIONS", string(stateData))
+		binding, err := observePublishedStartupBinding(t.Context(), e)
+		if err != nil || binding.Containers["backend"].EngineImageID != ids["backend"] || binding.Qualification != "not_established" {
+			t.Fatal("expected failed startup lost its actual immutable evidence", err)
+		}
+		if _, err := observePublishedBinding(t.Context(), e); err == nil {
+			t.Fatal("stopped startup state was misreported as running candidate evidence")
+		}
+		wrong := states["backend"]
+		wrong.Image = "sha256:" + strings.Repeat("f", 64)
+		states["backend"] = wrong
+		stateData, _ = json.Marshal(states)
+		t.Setenv("P07_DOCKER_HELPER_INSPECTIONS", string(stateData))
+		if _, err := observePublishedStartupBinding(t.Context(), e); err == nil {
+			t.Fatal("startup failure allowed an unrelated engine image")
+		}
+		for role, state := range states {
+			state.Running = true
+			state.Image = ids[role]
+			states[role] = state
+		}
+	})
 	// A valid but different mounted configuration is drift, not candidate evidence.
 	changed := settings
 	changed.Queue.WaitingCapacity++

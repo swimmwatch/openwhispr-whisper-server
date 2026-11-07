@@ -38,6 +38,27 @@ def stable_inventory() -> dict[str, Any]:
 
 
 class PromotionTests(unittest.TestCase):
+    def test_promotion_render_does_not_mutate_reused_nested_values(self) -> None:
+        values: dict[str, Any] = {"images": {"api": {"tag": "candidate"}}, "replicaCount": 2}
+        rendered_values: list[dict[str, Any]] = []
+
+        def render(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+            rendered_values.append(json.loads(Path(command[-1]).read_bytes()))
+            return subprocess.CompletedProcess(
+                command, 0, b"kind: ConfigMap\nmetadata:\n  name: fixture\n"
+            )
+
+        with patch.object(prepare.subprocess, "run", side_effect=render):
+            for identity in (DIGEST, "sha256:" + "9" * 64):
+                prepare.rendered(
+                    "helm", Path("chart.tgz"), values, {"api": identity, "backend": identity}
+                )
+                self.assertEqual(rendered_values[-1]["images"]["api"]["digest"], identity)
+                self.assertEqual(rendered_values[-1]["images"]["api"]["tag"], "candidate")
+                self.assertEqual(rendered_values[-1]["replicaCount"], 2)
+                self.assertNotIn("digest", values["images"]["api"])
+                self.assertNotIn("backend", values["images"])
+
     @unittest.skipUnless(
         os.environ.get("C02_PUBLISHER_TESTS") == "1", "Requires actual Helm artifact fixture"
     )

@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/models"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 )
 
@@ -156,11 +155,11 @@ func supervisorOptions(t *testing.T) (Options, string, *lockedLog) {
 		NativeCommand: []string{os.Args[0], "-test.run=^TestNativeChild$", "--"},
 		GPUCommand:    []string{os.Args[0], "-test.run=^TestGPUChild$", "--"},
 		Environment:   append(os.Environ(), "WHISPER_TEST_NATIVE=1", "WHISPER_TEST_STATE="+root, "GORACE=atexit_sleep_ms=0"),
-		Artifact: models.Artifact{
+		Artifact: domain.ModelArtifact{
 			ID:       "base",
 			Path:     path,
 			SHA256:   strings.Repeat("a", 64),
-			Metadata: models.Metadata{VocabularySize: 51865, Multilingual: true},
+			Metadata: domain.ModelMetadata{VocabularySize: 51865, Multilingual: true},
 		},
 		Fingerprint:      strings.Repeat("b", 64),
 		NativePort:       port,

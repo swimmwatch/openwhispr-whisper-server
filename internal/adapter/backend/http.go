@@ -142,7 +142,7 @@ func (s *Supervisor) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		if deadline, ok := operationCtx.Deadline(); ok {
 			_ = http.NewResponseController(w).SetReadDeadline(deadline)
-			_ = http.NewResponseController(w).SetWriteDeadline(deadline.Add(s.opts.CleanupTimeout + time.Second))
+			_ = http.NewResponseController(w).SetWriteDeadline(deadline.Add(s.opts.CleanupTimeout).Add(time.Second))
 			// net/http resets deadlines after body cleanup and response flushing.
 		}
 

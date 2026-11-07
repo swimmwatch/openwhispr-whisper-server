@@ -3,9 +3,12 @@ package backend
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"math"
+	"math/big"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -161,6 +164,56 @@ func TestActiveRecoveryThroughPrivateHTTP(t *testing.T) {
 	}
 	if !strings.Contains(logs.text(), "paired-cancel-1") {
 		t.Fatal("recovery lost the original request ID")
+	}
+}
+
+func TestSmallTemperatureThroughPrivateHTTP(t *testing.T) {
+	opts, root, _ := supervisorOptions(t)
+	backend := runningSupervisor(t, opts)
+	private := httptest.NewServer(backend.Handler())
+	defer private.Close()
+	service, client, _, err := pairedService(private.URL, opts.Fingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	defer func() {
+		if err := service.Shutdown(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
+	await(t, func() bool {
+		_, err := service.Readiness(context.Background())
+		return err == nil
+	})
+	first, _ := backend.Health(context.Background())
+	callPath := strings.Replace(starts(t, root)[0], "start-", "call-", 1)
+	for _, temperature := range []float64{1e-100, math.SmallestNonzeroFloat64, 1e-40, 0.1, 0, 1} {
+		result, err := service.Admit(context.Background(), transcription.Input{
+			Model: "base", RequestID: "temperature-boundary",
+			Fields: domain.InferenceFields{Language: "en", Temperature: temperature},
+		})
+		if err != nil || result.Text != "fixture transcript" {
+			t.Fatalf("valid temperature %g failed through private HTTP: result=%+v error=%v", temperature, result, err)
+		}
+		// Inspect the multipart value actually received by the CPU helper child.
+		data, err := os.ReadFile(callPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string][]string
+		if err := json.Unmarshal(data, &fields); err != nil || len(fields["temperature"]) != 1 {
+			t.Fatal("native did not receive exactly one temperature", err)
+		}
+		got, ok := new(big.Rat).SetString(fields["temperature"][0])
+		want := new(big.Rat).SetFloat64(float64(float32(temperature)))
+		if !ok || got.Cmp(want) != 0 {
+			t.Fatalf("temperature %g changed across the private/native boundary", temperature)
+		}
+	}
+	last, _ := backend.Health(context.Background())
+	if !last.CUDAReady || last.ProcessGeneration != first.ProcessGeneration || len(starts(t, root)) != 1 {
+		t.Fatal("valid temperature changed resident child ownership")
 	}
 }
 

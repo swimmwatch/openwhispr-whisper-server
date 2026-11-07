@@ -122,6 +122,51 @@ class ActualScannerTests(unittest.TestCase):
 
         self.assertGreater(evaluate("hadolint", json.loads(stdout), code)["blocking_count"], 0)
 
+    def docker_config(self, content: str) -> int:
+        (self.root / "Dockerfile").write_text(content)
+        code, stdout = execute(
+            [
+                str(self.binaries / "trivy"),
+                "config",
+                "--config",
+                "",
+                "--ignorefile",
+                "",
+                "--cache-dir",
+                str(self.root / "cache"),
+                "--quiet",
+                "--format",
+                "json",
+                "--include-non-failures",
+                str(self.root),
+            ]
+        )
+        result = evaluate("trivy-config", json.loads(stdout), code)
+        return int(result["blocking_count"])
+
+    @unittest.expectedFailure
+    def test_inline_trivy_ignore_cannot_hide_a_required_config_rule(self) -> None:
+        """Known v0.75.0 gap: ResultsToMisconf discards ignored rules before JSON.
+
+        No supported CLI flag exposes these inline suppressions. This expected failure
+        preserves the reproducer; it is incomplete security coverage, not a gate pass.
+        Revisit with a separately reviewed compatible scanner fix, not a source checker.
+        """
+        self.assertGreater(
+            self.docker_config(
+                "FROM ubuntu:24.04\n# trivy:ignore:AVD-DS-0002\nUSER root\nHEALTHCHECK CMD true\n"
+            ),
+            0,
+        )
+
+    def test_real_config_findings_block_and_corrected_input_passes(self) -> None:
+        self.assertGreater(
+            self.docker_config("FROM ubuntu:24.04\nUSER root\nHEALTHCHECK CMD true\n"), 0
+        )
+        self.assertEqual(
+            self.docker_config("FROM ubuntu:24.04\nUSER 65532\nHEALTHCHECK CMD true\n"), 0
+        )
+
     def test_privileged_manifest_blocks(self) -> None:
         manifest = self.root / "pod.yaml"
         manifest.write_text(

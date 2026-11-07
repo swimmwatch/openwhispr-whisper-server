@@ -33,10 +33,14 @@ FIXTURE_BYTES = 352078
 TEXT = "PRIVATE_RESPONSE_MARKER: synthetic transport test transcript"
 BOOTSTRAP = """
 import sys
+from dataclasses import replace
 from unittest.mock import patch
 from tests.acceptance import openai_client
 {bootstrap_extension}
-with patch.object(openai_client, "JFK_SHA256", sys.argv.pop(1)):
+expected = sys.argv.pop(1)
+fixtures = {{name: replace(fixture, size_bytes=352078, sha256=expected)
+            for name, fixture in openai_client.PUBLIC_FIXTURES.items()}}
+with patch.dict(openai_client.PUBLIC_FIXTURES, fixtures):
     raise SystemExit(openai_client.main())
 """
 
@@ -222,6 +226,90 @@ class OfficialOpenAIProbeTests(unittest.TestCase):
                 payload = parts["file"].get_payload(decode=True)
                 assert isinstance(payload, bytes)
                 self.assertEqual(hashlib.sha256(payload).hexdigest(), SYNTHETIC_SHA256)
+
+    def test_real_sdk_each_codec_preserves_payload_and_media_type(self) -> None:
+        # This is wire evidence with injected synthetic fixture identities, not decoding
+        # evidence. Real acceptance uses the independently pinned public codec files.
+        cases = {
+            "jfk.wav": "audio/wav",
+            "jfk.mp3": "audio/mpeg",
+            "jfk.mpeg": "audio/mpeg",
+            "jfk.mpga": "audio/mpeg",
+            "jfk.mp4": "audio/mp4",
+            "jfk.m4a": "audio/mp4",
+            "jfk.ogg": "audio/ogg",
+            "jfk-opus.ogg": "audio/ogg",
+            "jfk.webm": "audio/webm",
+            "jfk.flac": "audio/flac",
+        }
+        for name, media_type in cases.items():
+            audio = self.work / name
+            audio.write_bytes(SYNTHETIC_AUDIO)
+            for fmt in ("json", "text"):
+                with self.subTest(fixture=name, fmt=fmt), fault_server(fmt) as server:
+                    result = invoke(server, audio, "--response-format", fmt)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(len(server.requests), 1)
+                    endpoint, content_type, body, _ = server.requests[0]
+                    self.assertEqual(endpoint, "/v1/audio/transcriptions")
+                    message = BytesParser(policy=policy.default).parsebytes(
+                        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body
+                    )
+                    parts = {
+                        part.get_param("name", header="content-disposition"): part
+                        for part in message.iter_parts()
+                    }
+                    self.assertEqual(set(parts), {"file", "model", "language", "response_format"})
+                    self.assertEqual(parts["file"].get_content_type(), media_type)
+                    self.assertEqual(parts["file"].get_filename(), name)
+                    self.assertEqual(parts["file"].get_payload(decode=True), SYNTHETIC_AUDIO)
+                    self.assertEqual(
+                        parts["response_format"].get_payload(decode=True), fmt.encode()
+                    )
+                    evidence = json.loads(result.stdout)
+                    self.assertEqual(evidence["fixture_name"], name)
+                    self.assertEqual(evidence["fixture_media_type"], media_type)
+                    self.assertEqual(evidence["fixture_bytes"], len(SYNTHETIC_AUDIO))
+                    self.assertEqual(evidence["fixture_sha256"], SYNTHETIC_SHA256)
+                    self.assertNotIn(TEXT, result.stdout + result.stderr)
+                    self.assertNotIn(str(self.work), result.stdout + result.stderr)
+
+    def test_each_codec_corruption_and_overflow_never_upload(self) -> None:
+        for name in (
+            "jfk.wav",
+            "jfk.mp3",
+            "jfk.mpeg",
+            "jfk.mpga",
+            "jfk.mp4",
+            "jfk.m4a",
+            "jfk.ogg",
+            "jfk-opus.ogg",
+            "jfk.webm",
+            "jfk.flac",
+        ):
+            for payload in (
+                bytes([SYNTHETIC_AUDIO[0] ^ 1]) + SYNTHETIC_AUDIO[1:],
+                SYNTHETIC_AUDIO + b"x",
+                SYNTHETIC_AUDIO[:-1],
+            ):
+                with self.subTest(fixture=name, size=len(payload)), fault_server("json") as server:
+                    audio = self.work / name
+                    audio.write_bytes(payload)
+                    result = invoke(server, audio)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(server.requests, [])
+                    self.assertEqual(json.loads(result.stderr)["code"], "invalid_input")
+                    self.assertNotIn(str(self.work), result.stdout + result.stderr)
+
+    def test_unapproved_codec_filename_never_uploads(self) -> None:
+        with fault_server("json") as server:
+            audio = self.work / "private-user-audio.mp3"
+            audio.write_bytes(SYNTHETIC_AUDIO)
+            result = invoke(server, audio)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(server.requests, [])
+            self.assertEqual(json.loads(result.stderr)["code"], "invalid_input")
+            self.assertNotIn(audio.name, result.stdout + result.stderr)
 
     def test_wrong_fixture_hash_never_uploads(self) -> None:
         with fault_server("json") as server:

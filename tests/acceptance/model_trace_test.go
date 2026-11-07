@@ -32,6 +32,11 @@ wait "$trace_pid"
 // application privileges, alter host ptrace policy or expose native endpoints.
 func startModelTrace(t *testing.T, e *acceptanceEnvironment, snapshot DockerSnapshot) func() (uint64, error) {
 	t.Helper()
+	observerDeadline, bounded := e.ctx.Deadline()
+	observerBudget := time.Until(observerDeadline)
+	if !bounded || observerBudget <= 0 {
+		t.Fatal("model-I/O observer requires the remaining bounded acceptance lifetime")
+	}
 	if snapshot.NativeNamespacePID == nil || snapshot.NativeHostPID == nil {
 		t.Fatal("native identities are required before model-I/O tracing")
 	}
@@ -74,7 +79,7 @@ func startModelTrace(t *testing.T, e *acceptanceEnvironment, snapshot DockerSnap
 	}
 	done := make(chan result, 1)
 	go func() {
-		data, err := e.target.run(e.ctx, "isolated model observation", true, "start", "--attach", id)
+		data, err := e.target.runWithTimeout(e.ctx, observerBudget, "isolated model observation", true, "start", "--attach", id)
 		done <- result{data, err}
 	}()
 	stopped := false

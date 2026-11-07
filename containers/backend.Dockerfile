@@ -7,7 +7,7 @@ ARG CUDA_BUILD_IMAGE=nvidia/cuda:${CUDA_TOOLKIT_VERSION}-devel-ubuntu24.04@sha25
 ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:${CUDA_TOOLKIT_VERSION}-runtime-ubuntu24.04@sha256:828c4d878adcaa4265d80c95d8ec877149b49bb2419a4cf3bb6aa889bbb7ca2e
 
 ARG CURL_VERSION=8.5.0-2ubuntu10.16
-ARG CA_CERTIFICATES_VERSION=20260816ubuntu0.24.04.1
+ARG CA_CERTIFICATES_VERSION=20260816ubuntu0.24.04.2
 ARG CCACHE_VERSION=4.9.1-1
 ARG APT_RETRIES=3
 ARG FETCH_CONNECT_TIMEOUT=20
@@ -37,7 +37,8 @@ ENV CGO_ENABLED=0 \
     GOWORK=off
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN --mount=type=cache,id=whisper-go-mod-${GO_VERSION}-amd64,target=/go/pkg/mod <<BUILD
+# Export modules in a normal layer: remote build caches do not restore cache mounts.
+RUN <<BUILD
 test "$(go env GOVERSION)" = "go${GO_VERSION}"
 go mod download
 go mod verify
@@ -46,8 +47,7 @@ BUILD
 COPY cmd/backend ./cmd/backend
 COPY internal ./internal
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
-RUN --mount=type=cache,id=whisper-go-mod-${GO_VERSION}-amd64,target=/go/pkg/mod \
-    --mount=type=cache,id=whisper-go-build-${GO_VERSION}-amd64,target=/root/.cache/go-build <<BUILD
+RUN --mount=type=cache,id=whisper-go-build-${GO_VERSION}-amd64,target=/root/.cache/go-build <<BUILD
 test ! -e /dev/nvidia0
 go mod verify
 mkdir -p /out/licenses/go
@@ -78,11 +78,11 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 ARG CURL_VERSION
 ARG CA_CERTIFICATES_VERSION
 ARG CCACHE_VERSION
-ARG APT_RETRIES
 RUN <<BUILD
 rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
-apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries="${APT_RETRIES}" update
-apt-get install -y --no-install-recommends \
+apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=0 update
+# Keep retries disabled for the unpatched base APT client in this builder.
+apt-get -o Acquire::Retries=0 install -y --no-install-recommends \
     "ca-certificates=${CA_CERTIFICATES_VERSION}" \
     "ccache=${CCACHE_VERSION}" \
     "curl=${CURL_VERSION}"
@@ -175,9 +175,18 @@ ENV LD_LIBRARY_PATH=/usr/local/lib/whisper:/usr/local/cuda/lib64:/usr/local/nvid
 ARG CURL_VERSION
 ARG CA_CERTIFICATES_VERSION
 ARG APT_RETRIES
+ARG APT_VERSION=2.8.4ubuntu0.1
+ARG BROTLI_VERSION=1.1.0-2ubuntu0.1
+ARG PCRE2_VERSION=10.42-4ubuntu2.2
+ARG ZLIB_VERSION=1:1.3.dfsg-3.1ubuntu2.3
 ARG OPENSSL_VERSION=3.0.13-0ubuntu3.16
 ARG GNUPG_VERSION=2.4.4-2ubuntu17.6
 ARG GCC_RUNTIME_VERSION=14.2.0-4ubuntu2~24.04.1
+ARG GLIBC_VERSION=2.39-0ubuntu8.9
+ARG UTIL_LINUX_VERSION=2.39.3-9ubuntu6.6
+ARG PAM_VERSION=1.5.3-5ubuntu5.7
+ARG SYSTEMD_VERSION=255.4-1ubuntu8.18
+ARG NCURSES_VERSION=6.4+20240113-1ubuntu2.2
 ARG CUDA_TOOLKIT_VERSION
 ARG CUDA_EULA_SHA256
 ARG FETCH_CONNECT_TIMEOUT
@@ -196,11 +205,19 @@ for identity in "${RUNTIME_UID}" "${RUNTIME_GID}"; do
 done
 
 rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
-apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries="${APT_RETRIES}" update
-apt-get install -y --no-install-recommends \
+apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=0 update
+# Disable retries while the base APT client installs its own security fix.
+apt-get -o Acquire::Retries=0 install -y --no-install-recommends \
+    "apt=${APT_VERSION}" \
+    "libapt-pkg6.0t64=${APT_VERSION}"
+apt-get -o Acquire::Retries="${APT_RETRIES}" install -y --no-install-recommends \
+    "bsdutils=1:${UTIL_LINUX_VERSION}" \
     "ca-certificates=${CA_CERTIFICATES_VERSION}" \
+    "coreutils=9.4-3ubuntu6.3" \
     "curl=${CURL_VERSION}" \
+    "diffutils=1:3.10-1ubuntu0.1" \
     "dirmngr=${GNUPG_VERSION}" \
+    "dpkg=1.22.6ubuntu6.6" \
     "gnupg=${GNUPG_VERSION}" \
     "gnupg-utils=${GNUPG_VERSION}" \
     "gnupg2=${GNUPG_VERSION}" \
@@ -209,11 +226,45 @@ apt-get install -y --no-install-recommends \
     "gpgconf=${GNUPG_VERSION}" \
     "gpgsm=${GNUPG_VERSION}" \
     "gpgv=${GNUPG_VERSION}" \
+    "gzip=1.12-1ubuntu3.2" \
     "keyboxd=${GNUPG_VERSION}" \
+    "libattr1=1:2.5.2-1ubuntu0.1" \
+    "libblkid1=${UTIL_LINUX_VERSION}" \
+    "libbrotli1=${BROTLI_VERSION}" \
+    "libbz2-1.0=1.0.8-5.1ubuntu0.1" \
+    "libc-bin=${GLIBC_VERSION}" \
+    "libc6=${GLIBC_VERSION}" \
+    "libcap2=1:2.66-5ubuntu2.4" \
+    "libgcrypt20=1.10.3-2ubuntu0.2" \
+    "libgnutls30t64=3.8.3-1.1ubuntu3.6" \
     "libgomp1=${GCC_RUNTIME_VERSION}" \
+    "liblzma5=5.6.1+really5.4.5-1ubuntu0.4" \
+    "libmount1=${UTIL_LINUX_VERSION}" \
+    "libncursesw6=${NCURSES_VERSION}" \
+    "libp11-kit0=0.25.3-4ubuntu2.2" \
+    "libpam-modules=${PAM_VERSION}" \
+    "libpam-modules-bin=${PAM_VERSION}" \
+    "libpam-runtime=${PAM_VERSION}" \
+    "libpam0g=${PAM_VERSION}" \
+    "libpcre2-8-0=${PCRE2_VERSION}" \
+    "libsmartcols1=${UTIL_LINUX_VERSION}" \
+    "libsqlite3-0=3.45.1-1ubuntu2.9" \
     "libssl3t64=${OPENSSL_VERSION}" \
     "libstdc++6=${GCC_RUNTIME_VERSION}" \
-    "openssl=${OPENSSL_VERSION}"
+    "libsystemd0=${SYSTEMD_VERSION}" \
+    "libtasn1-6=4.19.0-3ubuntu0.24.04.2" \
+    "libtinfo6=${NCURSES_VERSION}" \
+    "libudev1=${SYSTEMD_VERSION}" \
+    "libuuid1=${UTIL_LINUX_VERSION}" \
+    "mount=${UTIL_LINUX_VERSION}" \
+    "ncurses-base=${NCURSES_VERSION}" \
+    "ncurses-bin=${NCURSES_VERSION}" \
+    "openssl=${OPENSSL_VERSION}" \
+    "perl-base=5.38.2-3.2ubuntu0.6" \
+    "sed=4.9-2ubuntu0.24.04.1" \
+    "tar=1.35+dfsg-3ubuntu0.4" \
+    "util-linux=${UTIL_LINUX_VERSION}" \
+    "zlib1g=${ZLIB_VERSION}"
 rm -rf /var/lib/apt/lists/*
 
 groupadd --gid "${RUNTIME_GID}" whisper

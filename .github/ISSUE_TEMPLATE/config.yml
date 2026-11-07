@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Operator documentation
+    url: https://github.com/swimmwatch/openwhispr-whisper-server/blob/main/docs/operations.md
+    about: Read setup, configuration, troubleshooting and qualification limitations.
   - name: Private security report
     url: https://github.com/swimmwatch/openwhispr-whisper-server/security/advisories/new
     about: Report suspected vulnerabilities privately; do not include secrets or private audio.

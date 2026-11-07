@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/application/transcription"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 )
 
@@ -23,7 +25,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 type trackedReply struct {
 	reader io.Reader
-	closed bool
+	closes int
 	read   int
 }
 
@@ -35,7 +37,7 @@ func (r *trackedReply) Read(p []byte) (int, error) {
 }
 
 func (r *trackedReply) Close() error {
-	r.closed = true
+	r.closes++
 
 	return nil
 }
@@ -104,7 +106,7 @@ func TestHealthRejectsInconsistentPrivateState(t *testing.T) {
 			t.Cleanup(client.Close)
 			_, err = client.Health(context.Background())
 			failureKind(t, err, test.kind)
-			if !body.closed || strings.Contains(err.Error(), "PRIVATE") {
+			if body.closes != 1 || strings.Contains(err.Error(), "PRIVATE") {
 				t.Fatal("invalid health retained its response or exposed private data")
 			}
 		})
@@ -223,11 +225,66 @@ func TestResponseReadFailureClosesBody(t *testing.T) {
 					want = domain.DeadlineExceeded
 				}
 				failureKind(t, err, want)
-				if !body.closed || body.read > int(limit)+1 || strings.Contains(err.Error(), "PRIVATE") {
+				if body.closes != 1 || body.read > int(limit)+1 || strings.Contains(err.Error(), "PRIVATE") {
 					t.Fatal("response read was unbounded, leaked content or retained the body")
 				}
 				if input.Audio.(*borrowedAudio).closed.Load() || calls > 2 {
 					t.Fatal("failed response closed borrowed audio or retried")
+				}
+			})
+		}
+	}
+}
+
+func TestPrivateResponseOwnershipAfterStatusValidation(t *testing.T) {
+	for _, path := range []string{"/health", "/inference"} {
+		for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+			t.Run(path+"/"+http.StatusText(status), func(t *testing.T) {
+				data := []byte(`{"text":"current response"}`)
+				if path == "/health" {
+					data, _ = json.Marshal(validHealth())
+				}
+				if status == http.StatusServiceUnavailable {
+					data = []byte(`{"error":{"code":"backend_unavailable","message":"PRIVATE","type":"service_unavailable_error","param":null}}`)
+				}
+				body := &trackedReply{reader: bytes.NewReader(data)}
+				calls := 0
+				opts := clientOptions("http://backend.test")
+				opts.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					calls++
+					if r.URL.Path != path {
+						health, _ := json.Marshal(validHealth())
+						return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(health))}, nil
+					}
+					return &http.Response{StatusCode: status, Body: body}, nil
+				})}
+				client, err := New(opts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer client.Close()
+				input := normalized()
+				if path == "/health" {
+					_, err = client.Health(context.Background())
+				} else {
+					var result transcription.Result
+					result, err = client.Infer(context.Background(), input)
+					if err == nil && result.Text != "current response" {
+						t.Fatal("response changed during transport ownership handoff")
+					}
+				}
+				if status == http.StatusOK && err != nil {
+					t.Fatal(err)
+				}
+				if status != http.StatusOK {
+					failureKind(t, err, domain.BackendUnavailable)
+				}
+				wantCalls := 1
+				if path == "/inference" {
+					wantCalls++
+				}
+				if body.closes != 1 || calls != wantCalls || input.Audio.(*borrowedAudio).closed.Load() {
+					t.Fatal("private response leaked, retried or closed caller-owned audio")
 				}
 			})
 		}
@@ -293,7 +350,7 @@ func TestClientRejectsInvalidOptionsAndInputs(t *testing.T) {
 			case "nil-audio":
 				input.Audio = nil
 			case "short":
-				input.Size = minWAVBytes - 1
+				input.Size = wav.MinBytes - 1
 			case "large":
 				input.Size = opts.MaxWAVBytes + 1
 			case "prompt":

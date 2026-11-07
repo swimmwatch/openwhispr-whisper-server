@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -140,6 +141,70 @@ func TestUpstreamContractIsolation(t *testing.T) {
 	}
 	if calls.Load() != 2 {
 		t.Fatal("inference was repeated or omitted")
+	}
+}
+
+func TestSmallTemperatureFitsPrivateFieldLimit(t *testing.T) {
+	var expected atomic.Uint64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			healthReply(w, strings.Repeat("a", 64))
+			return
+		}
+		form, err := r.MultipartReader()
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		found := false
+		for {
+			part, err := form.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if part.FormName() != "temperature" {
+				continue
+			}
+			found = true
+			// The supervisor permits at most 64 bytes for numeric fields.
+			value, err := io.ReadAll(io.LimitReader(part, 65))
+			if err != nil || len(value) > 64 {
+				t.Error("valid temperature exceeded the private field bound")
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			got, err := strconv.ParseFloat(string(value), 64)
+			if err != nil || math.Float64bits(got) != expected.Load() {
+				t.Error("temperature changed during private transport", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+		if !found {
+			t.Error("temperature was not sent")
+		}
+		_, _ = io.WriteString(w, `{"text":"current"}`)
+	}))
+	defer server.Close()
+	client, err := New(clientOptions(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	for _, temperature := range []float64{1e-100, math.SmallestNonzeroFloat64, 0, 1, 0.1} {
+		expected.Store(math.Float64bits(temperature))
+		input := normalized()
+		input.Fields.Temperature = temperature
+		result, err := client.Infer(context.Background(), input)
+		if err != nil || result.Text != "current" {
+			t.Errorf("valid temperature %g failed private inference: %v", temperature, err)
+		}
 	}
 }
 

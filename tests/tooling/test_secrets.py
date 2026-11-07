@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.security import check_secrets
 
@@ -82,8 +83,21 @@ class RealScannerTests(unittest.TestCase):
             try:
                 source = root / "public.md"
                 source.write_text(marker)
+                (root / "trivy.yaml").write_text("scan:\n  skip-files: [public.md]\n")
+                (root / ".trivyignore").write_text("fixture-rule\n")
                 output = io.StringIO()
-                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                with (
+                    contextlib.redirect_stdout(output),
+                    contextlib.redirect_stderr(output),
+                    patch.dict(
+                        os.environ,
+                        {
+                            "TRIVY_CONFIG": str(root / "trivy.yaml"),
+                            "TRIVY_IGNOREFILE": str(root / ".trivyignore"),
+                            "TRIVY_SKIP_FILES": "public.md",
+                        },
+                    ),
+                ):
                     report, status = check_secrets.scan(root, binary, config, ROOT)
 
                 self.assertEqual((report["finding_count"], status), (1, 1))

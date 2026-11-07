@@ -17,34 +17,32 @@ import (
 const environmentPrefix = "WHISPER_"
 
 type binding struct {
-	path, env, flag, rule string
-	typ                   reflect.Type
-	index                 []int
+	path, env, flag, field string
+	typ                    reflect.Type
 }
 
 // Read the existing tags once per load for overrides and per-source validation.
 func settingsBindings() []binding {
 	var result []binding
-	var walk func(reflect.Type, string, []int)
+	var walk func(reflect.Type, string, string)
 
-	walk = func(t reflect.Type, prefix string, parent []int) {
+	walk = func(t reflect.Type, prefix, parent string) {
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 			path := prefix + field.Tag.Get("koanf")
-			index := append(append([]int(nil), parent...), i)
+			name := parent + field.Name
 			if field.Type.Kind() == reflect.Struct {
-				walk(field.Type, path+".", index)
+				walk(field.Type, path+".", name+".")
 			} else if field.Tag.Get("flag") != "" {
 				result = append(result, binding{
 					path: path, env: environmentPrefix + field.Tag.Get("env"),
-					flag: field.Tag.Get("flag"), rule: field.Tag.Get("validate"),
-					typ: field.Type, index: index,
+					flag: field.Tag.Get("flag"), field: name, typ: field.Type,
 				})
 			}
 		}
 	}
 
-	walk(reflect.TypeFor[Settings](), "", nil)
+	walk(reflect.TypeFor[Settings](), "", "")
 	return result
 }
 

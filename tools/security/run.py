@@ -16,11 +16,13 @@ from typing import Any
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.release.check import fresh, require
+from tools.release.validation import fresh, require
 from tools.security import check
 from tools.security.advisories import component_coverage as component_coverage
 from tools.security.advisories import component_findings as component_findings
+from tools.security.check_secrets import TRIVY_ISOLATION_FLAGS
 from tools.security.check_secrets import scan as source_secrets
+from tools.security.process import run_private
 
 ROOT = Path(__file__).resolve().parents[2]
 HELM_SCAN_FLAGS = ["--helm-kube-version", "1.37.0", "--file-patterns", r"helm:.*\.json"]
@@ -69,14 +71,9 @@ def execute(command: list[str], cwd: Path = ROOT, timeout: int = 1200) -> tuple[
         GOTOOLCHAIN="local", GOWORK="off", GOOS="linux", GOARCH="amd64", CGO_ENABLED="0", GOFLAGS=""
     )
 
-    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
-        process = subprocess.run(
-            command, cwd=cwd, env=env, stdout=stdout, stderr=stderr, timeout=timeout
-        )
-        require(process.returncode in (0, 1), "Scanner execution failed; raw output suppressed")
-        stdout.seek(0)
-
-        return process.returncode, stdout.read().decode("utf-8")
+    process = run_private(command, cwd=cwd, env=env, timeout=timeout)
+    require(process.returncode in (0, 1), "Scanner execution failed; raw output suppressed")
+    return process.returncode, process.stdout.decode("utf-8")
 
 
 def input_binding(
@@ -127,7 +124,8 @@ class ScanSession:
 
             raw = json_stream(stdout) if scanner == "govulncheck" else json.loads(stdout)
             result = check.evaluate(scanner, raw, code, self.exceptions)
-            rule_bytes = (self.binaries / check.TARGETS.get(target, "trivy")).read_bytes()
+            with (self.binaries / check.TARGETS.get(target, "trivy")).open("rb") as binary:
+                rule_identity = hashlib.file_digest(binary, "sha256")
             if scanner.startswith("trivy"):
                 _, metadata = execute(
                     self.trivy + ["--cache-dir", str(self.cache), "--version", "--format", "json"]
@@ -135,16 +133,16 @@ class ScanSession:
                 if scanner == "trivy-vuln":
                     validate_database_metadata(json.loads(metadata))
 
-                rule_bytes += metadata.encode()
+                rule_identity.update(metadata.encode())
             elif scanner == "govulncheck":
-                rule_bytes += json.dumps(
-                    [x["config"] for x in raw if "config" in x], sort_keys=True
-                ).encode()
+                rule_identity.update(
+                    json.dumps([x["config"] for x in raw if "config" in x], sort_keys=True).encode()
+                )
 
             result.update(
                 target=target,
                 scanner_version=check.expected_version(target),
-                rule_identity="sha256:" + hashlib.sha256(rule_bytes).hexdigest(),
+                rule_identity="sha256:" + rule_identity.hexdigest(),
                 scan_time=now,
                 database_checked_at=now,
                 coverage_gaps=[],
@@ -215,18 +213,12 @@ def run(
 
     with tempfile.TemporaryDirectory(prefix="whisper-security-") as td:
         private = Path(td)
-        (private / "config.yaml").write_text("{}\n")
-        (private / "ignore").write_text("")
-
         trivy = [str(binaries / "trivy")]
         cache = db_cache if db_cache is not None else private / "cache"
         cache.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         common = [
-            "--config",
-            str(private / "config.yaml"),
-            "--ignorefile",
-            str(private / "ignore"),
+            *TRIVY_ISOLATION_FLAGS,
             "--cache-dir",
             str(cache),
             "--quiet",

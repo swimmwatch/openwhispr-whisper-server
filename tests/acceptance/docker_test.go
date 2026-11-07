@@ -2,16 +2,22 @@ package acceptance
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -21,6 +27,15 @@ const dockerAPIID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const dockerBackendID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 const dockerFixtureCommandTimeout = 3 * time.Second
+
+// Synchronous fake CLI handlers finish or join their work before exiting. Keep
+// race instrumentation and inherited options, but do not spend a second after
+// every completed helper command in the detector's default exit sleep. This
+// assignment affects only the exec'd fixture, never the parent or real Docker.
+// https://go.dev/doc/articles/race_detector#Options
+func dockerFixtureScript(testName string) []byte {
+	return []byte("#!/bin/sh\nGORACE=\"${GORACE:+$GORACE }atexit_sleep_ms=0\" exec \"$P07_DOCKER_HELPER_EXEC\" -test.run='^" + testName + "$' -- \"$@\"\n")
+}
 
 func dockerFixture(t *testing.T) (*DockerTarget, string) {
 	t.Helper()
@@ -40,7 +55,7 @@ func dockerFixtureWithImages(t *testing.T, budget time.Duration, local bool) (*D
 		t.Fatal(err)
 	}
 	wrapper := filepath.Join(dir, "docker")
-	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nexec \"$P07_DOCKER_HELPER_EXEC\" -test.run=^TestDockerCLIHelper$ -- \"$@\"\n"), 0700); err != nil {
+	if err := os.WriteFile(wrapper, dockerFixtureScript("TestDockerCLIHelper"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("P07_DOCKER_HELPER_EXEC", executable)
@@ -102,7 +117,26 @@ func TestDockerCLIHelper(t *testing.T) {
 	if args[0] == "compose" {
 		expected := map[string]string{"--project-name": "p07-owned", "--project-directory": os.Getenv("P07_DOCKER_HELPER_ROOT"), "--file": filepath.Join(os.Getenv("P07_DOCKER_HELPER_ROOT"), "deploy", "compose.yaml"), "--env-file": "/dev/null"}
 		args = args[1:]
+		runtimeEnvironment := map[string]string{}
 		for len(args) >= 2 && strings.HasPrefix(args[0], "--") {
+			if args[0] == "--file" && args[1] == filepath.Join(dir, "p07-runtime-fixtures.json") {
+				var runtime struct {
+					Services map[string]struct {
+						Environment map[string]string `json:"environment"`
+					} `json:"services"`
+				}
+				data, err := os.ReadFile(args[1])
+				if err != nil || json.Unmarshal(data, &runtime) != nil {
+					fail()
+				}
+				role := "backend"
+				if os.Getenv("P07_DOCKER_HELPER_MODE") == "api-gc" {
+					role = "api"
+				}
+				runtimeEnvironment = runtime.Services[role].Environment
+				args = args[2:]
+				continue
+			}
 			value, ok := expected[args[0]]
 			if !ok || value != args[1] {
 				fail()
@@ -138,6 +172,30 @@ func TestDockerCLIHelper(t *testing.T) {
 				fmt.Println(dockerBackendID)
 			}
 		case "up":
+			if mode := os.Getenv("P07_DOCKER_HELPER_MODE"); mode == "supervisor-gc" || mode == "api-gc" {
+				dockerSupervisorGCProcess(dir, runtimeEnvironment, fail)
+			}
+			if endpoint := os.Getenv("P07_DOCKER_HELPER_MODEL_SOURCE"); endpoint != "" {
+				roots := x509.NewCertPool()
+				if runtimeEnvironment["SSL_CERT_FILE"] == "/prepared/p07-source-ca.pem" {
+					data, err := os.ReadFile(filepath.Join(dir, "prepared", "p07-source-ca.pem"))
+					if err != nil || !roots.AppendCertsFromPEM(data) {
+						fail()
+					}
+				}
+				transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
+				client := &http.Client{Transport: transport, Timeout: time.Second}
+				response, err := client.Get(endpoint)
+				if err != nil {
+					fail()
+				}
+				_, err = io.Copy(io.Discard, response.Body)
+				response.Body.Close()
+				client.CloseIdleConnections()
+				if err != nil || response.StatusCode != http.StatusOK {
+					fail()
+				}
+			}
 			if err := os.WriteFile(state, []byte("owned"), 0600); err != nil {
 				fail()
 			}
@@ -191,6 +249,17 @@ func TestDockerCLIHelper(t *testing.T) {
 		}
 	} else {
 		switch args[0] {
+		case "start":
+			if len(args) != 3 || args[1] != "--attach" || args[2] != dockerBackendID {
+				fail()
+			}
+			fmt.Fprintln(os.Stderr, "PRIVATE_RUNTIME_DIAGNOSTIC")
+			if os.Getenv("P07_DOCKER_HELPER_MODE") == "observer-overflow" {
+				fmt.Print(strings.Repeat("PRIVATE_RUNTIME_DIAGNOSTIC", 100000))
+			} else {
+				time.Sleep(250 * time.Millisecond)
+				fmt.Println("model-observer-complete")
+			}
 		case "image":
 			var ids map[string]string
 			if json.Unmarshal([]byte(os.Getenv("P07_DOCKER_HELPER_IMAGE_IDS")), &ids) != nil || ids[args[len(args)-1]] == "" {
@@ -387,6 +456,43 @@ func TestDockerTargetCancellationStopsCLIChildrenAndCleans(t *testing.T) {
 	}
 }
 
+func TestDockerTargetModelObservationUsesExplicitBudget(t *testing.T) {
+	target, _ := dockerFixtureWithBudget(t, 50*time.Millisecond)
+	observerBudget := 3 * time.Second
+	ctx, cancel := context.WithTimeout(t.Context(), observerBudget)
+	defer cancel()
+	data, err := target.runWithTimeout(ctx, observerBudget, "isolated model observation", false, "start", "--attach", dockerBackendID)
+	if err != nil || strings.TrimSpace(string(data)) != "model-observer-complete" {
+		t.Fatal("bounded model observer was cut off by the short CLI budget", err)
+	}
+	if _, err := target.run(t.Context(), "normal short observation", false, "start", "--attach", dockerBackendID); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("explicit model observation budget changed ordinary command deadline", err)
+	}
+}
+
+func TestDockerTargetModelObservationRetainsParentAndOutputBounds(t *testing.T) {
+	target, _ := dockerFixtureWithBudget(t, 50*time.Millisecond)
+	for _, budget := range []time.Duration{0, -time.Second} {
+		if _, err := target.runWithTimeout(t.Context(), budget, "invalid observation", false, "start", "--attach", dockerBackendID); err == nil {
+			t.Fatal("unbounded observer budget was accepted")
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if data, err := target.runWithTimeout(ctx, 3*time.Second, "parent-bounded observation", false, "start", "--attach", dockerBackendID); !errors.Is(err, context.DeadlineExceeded) || data != nil || strings.Contains(err.Error(), "PRIVATE_RUNTIME_DIAGNOSTIC") {
+		t.Fatal("long observer ignored the earlier parent deadline or leaked diagnostics", err)
+	}
+	canceled, stop := context.WithCancel(t.Context())
+	stop()
+	if _, err := target.runWithTimeout(canceled, 3*time.Second, "cancelled observation", false, "start", "--attach", dockerBackendID); !errors.Is(err, context.Canceled) {
+		t.Fatal("long observer lost parent cancellation", err)
+	}
+	t.Setenv("P07_DOCKER_HELPER_MODE", "observer-overflow")
+	if data, err := target.runWithTimeout(t.Context(), 3*time.Second, "overflowing observation", true, "start", "--attach", dockerBackendID); err == nil || data != nil || strings.Contains(err.Error(), "PRIVATE_RUNTIME_DIAGNOSTIC") {
+		t.Fatal("long observer accepted excess output or leaked diagnostics", err)
+	}
+}
+
 func TestDockerTargetCommandDeadlineBoundsDiscovery(t *testing.T) {
 	target, dir := dockerFixtureWithBudget(t, 150*time.Millisecond)
 	t.Setenv("P07_DOCKER_HELPER_MODE", "deadline-ps")
@@ -426,6 +532,48 @@ func TestDockerTargetObservationAndOutputBounds(t *testing.T) {
 	t.Setenv("P07_DOCKER_HELPER_MODE", "overflow")
 	if err := target.Recreate(ctx); err == nil || strings.Contains(err.Error(), "PRIVATE_RUNTIME_DIAGNOSTIC") {
 		t.Fatal("output overflow was accepted or leaked")
+	}
+}
+
+func TestDockerTargetScopedModelSourceTrust(t *testing.T) {
+	target, dir := dockerFixture(t)
+	var requests atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte("pinned public source bytes"))
+	}))
+	defer server.Close()
+	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	if err := os.WriteFile(filepath.Join(dir, "prepared", "p07-source-ca.pem"), certificate, 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("P07_DOCKER_HELPER_MODEL_SOURCE", server.URL)
+	if err := target.setModelSourceTrust(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.setSupervisorGCTrace(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.setSupervisorGCTrace(false); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Up(t.Context()); err != nil {
+		t.Fatal("scoped runtime CA did not permit the actual TLS model-source request", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatal("runtime model source was not reached exactly once")
+	}
+	if err := target.Down(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.setModelSourceTrust(false); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Up(t.Context()); err == nil {
+		t.Fatal("removed fixture trust unexpectedly remained active")
+	}
+	if requests.Load() != 1 {
+		t.Fatal("untrusted runtime reached HTTP despite failed TLS validation")
 	}
 }
 

@@ -19,13 +19,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/application/transcription"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/logging"
 )
 
 const (
-	minWAVBytes            = 46
 	healthReplyBytes       = 4096
 	multipartFramingBytes  = 64 << 10
 	privateProtocolVersion = "1"
@@ -58,7 +58,7 @@ func New(opts Options) (*Client, error) {
 		len(digest) != sha256.Size ||
 		!logging.ValidRequestID(opts.Model) ||
 		opts.OperationTimeout < time.Millisecond ||
-		opts.MaxWAVBytes < minWAVBytes ||
+		opts.MaxWAVBytes < wav.MinBytes ||
 		opts.MaxReplyBytes < 1 ||
 		opts.MaxReplyBytes == math.MaxInt64 ||
 		opts.PromptBytes <= 0 ||
@@ -98,18 +98,12 @@ func (c *Client) Health(parent context.Context) (transcription.Health, error) {
 	}
 	request.Header.Set("X-Request-ID", requestID(ctx, ""))
 
-	response, err := c.http.Do(request)
+	status, data, err := c.exchange(ctx, request, healthReplyBytes)
 	if err != nil {
-		return transcription.Health{}, portFailure(ctx, err)
+		return transcription.Health{}, err
 	}
-	defer response.Body.Close()
-
-	data, err := readBounded(response.Body, healthReplyBytes)
-	if err != nil {
-		return transcription.Health{}, portFailure(ctx, err)
-	}
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusServiceUnavailable {
-		return transcription.Health{}, privateFailure(response.StatusCode, data)
+	if status != http.StatusOK && status != http.StatusServiceUnavailable {
+		return transcription.Health{}, privateFailure(status, data)
 	}
 
 	var wire struct {
@@ -147,9 +141,9 @@ func (c *Client) Health(parent context.Context) (transcription.Health, error) {
 
 	ready := *wire.Status == domain.BackendReady || *wire.Status == domain.BackendBusy
 	if *wire.CUDA != ready ||
-		ready && (response.StatusCode != http.StatusOK ||
+		ready && (status != http.StatusOK ||
 			!logging.ValidRequestID(*wire.Generation)) ||
-		!ready && response.StatusCode != http.StatusServiceUnavailable ||
+		!ready && status != http.StatusServiceUnavailable ||
 		*wire.Generation != "" && !logging.ValidRequestID(*wire.Generation) {
 		return transcription.Health{}, portFailure(ctx, errPrivate)
 	}
@@ -172,7 +166,7 @@ func (c *Client) Infer(parent context.Context, input transcription.Normalized) (
 	ctx = logging.WithRequestID(ctx, requestID(ctx, input.RequestID))
 
 	if input.Audio == nil ||
-		input.Size < minWAVBytes ||
+		input.Size < wav.MinBytes ||
 		input.Size > c.opts.MaxWAVBytes ||
 		!utf8.ValidString(input.Fields.Prompt) ||
 		len(input.Fields.Prompt) > c.opts.PromptBytes ||
@@ -187,7 +181,8 @@ func (c *Client) Infer(parent context.Context, input transcription.Normalized) (
 	if err != nil {
 		return transcription.Result{}, err
 	}
-	if !health.CUDAReady || health.Status != domain.BackendReady {
+	if !health.CUDAReady || health.Status != domain.BackendReady ||
+		input.ProcessGeneration != "" && input.ProcessGeneration != health.ProcessGeneration {
 		return transcription.Result{}, &domain.Failure{Kind: domain.NotReady}
 	}
 
@@ -231,18 +226,12 @@ func (c *Client) Infer(parent context.Context, input transcription.Normalized) (
 	request.Header.Set("X-Whisper-Generation", health.ProcessGeneration)
 	request.Header.Set("X-Whisper-Timeout-Ms", strconv.FormatInt(int64(remaining), 10))
 
-	response, err := c.http.Do(request)
+	status, data, err := c.exchange(ctx, request, c.opts.MaxReplyBytes)
 	if err != nil {
-		return transcription.Result{}, portFailure(ctx, err)
+		return transcription.Result{}, err
 	}
-	defer response.Body.Close()
-
-	data, err := readBounded(response.Body, c.opts.MaxReplyBytes)
-	if err != nil {
-		return transcription.Result{}, portFailure(ctx, err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return transcription.Result{}, privateFailure(response.StatusCode, data)
+	if status != http.StatusOK {
+		return transcription.Result{}, privateFailure(status, data)
 	}
 
 	var reply struct {
@@ -263,7 +252,7 @@ func inferenceFraming(fields domain.InferenceFields, language string) (prefix, s
 	for _, field := range [][2]string{
 		{"language", language},
 		{"prompt", fields.Prompt},
-		{"temperature", strconv.FormatFloat(fields.Temperature, 'f', -1, 64)},
+		{"temperature", strconv.FormatFloat(fields.Temperature, 'g', -1, 64)},
 		{"response_format", "json"},
 	} {
 		if err := form.WriteField(field[0], field[1]); err != nil {
@@ -301,15 +290,22 @@ func requestID(ctx context.Context, id string) string {
 	return rand.Text()
 }
 
-func readBounded(reader io.Reader, max int64) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, max+1))
+// exchange owns one bounded response; each endpoint retains its status and schema policy.
+func (c *Client) exchange(ctx context.Context, request *http.Request, limit int64) (int, []byte, error) {
+	response, err := c.http.Do(request)
 	if err != nil {
-		return nil, err
+		return 0, nil, portFailure(ctx, err)
 	}
-	if int64(len(data)) > max {
-		return nil, errPrivate
+	defer response.Body.Close()
+
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err == nil && int64(len(data)) > limit {
+		err = errPrivate
 	}
-	return data, nil
+	if err != nil {
+		return 0, nil, portFailure(ctx, err)
+	}
+	return response.StatusCode, data, nil
 }
 
 func decode(data []byte, value any) error {

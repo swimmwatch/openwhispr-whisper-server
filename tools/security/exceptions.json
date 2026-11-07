@@ -2,26 +2,6 @@
   {
     "scanner": "gosec",
     "rule": "G115",
-    "path": "internal/adapter/models/metadata.go",
-    "disposition": "not_applicable",
-    "owner": "swimmwatch",
-    "rationale": "The native GGML header stores signed int32 fields. Decoding the little-endian bits as int32 is intentional; negative fields and invalid dimensions are rejected immediately before use.",
-    "evidence": "internal/adapter/models/metadata_test.go",
-    "expires": "2026-11-22"
-  },
-  {
-    "scanner": "gosec",
-    "rule": "G115",
-    "path": "internal/adapter/backend/inference.go",
-    "disposition": "false_positive",
-    "owner": "swimmwatch",
-    "rationale": "The RIFF size comparison cannot accept truncation: the same boolean expression requires size-8 <= MaxUint32. The caller rejects sizes below 46 and bounds the upload before validation.",
-    "evidence": "internal/adapter/backend/http_test.go",
-    "expires": "2026-11-22"
-  },
-  {
-    "scanner": "gosec",
-    "rule": "G115",
     "path": "internal/adapter/audio/decoder.go",
     "disposition": "false_positive",
     "owner": "swimmwatch",
@@ -68,45 +48,5 @@
     "rationale": "The unrooted branch opens only an operator-configured prepared-model path, never a client-supplied filename. Downloaded cache paths use os.Root with O_NOFOLLOW. Both branches verify the opened descriptor is a regular file; provisioning verifies its configured SHA256.",
     "evidence": "internal/adapter/models/provision_test.go",
     "expires": "2026-11-22"
-  },
-  {
-    "scanner": "trivy",
-    "rule": "GHSA-cxf3-9h37-7rr8",
-    "path": "github.com/labstack/echo/v5",
-    "disposition": "not_applicable",
-    "owner": "swimmwatch",
-    "rationale": "The advisory concerns Echo Proxy WebSocket middleware. Resident V1 uses explicit HTTP handlers and its own bounded http.Client transport; Echo Proxy is not referenced or linked into either entrypoint. The mandatory compiled-symbol scope test checks both exact Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. Echo v5.4.0 remains the approved core pin; this is exact non-applicability, not an accepted-risk waiver.",
-    "evidence": "tests/tooling/test_echo_security_scope.py",
-    "expires": "2026-10-31"
-  },
-  {
-    "scanner": "trivy",
-    "rule": "CVE-2026-118264",
-    "path": "github.com/labstack/echo/v5",
-    "disposition": "not_applicable",
-    "owner": "swimmwatch",
-    "rationale": "CVE alias of GHSA-cxf3-9h37-7rr8: the affected Echo Proxy WebSocket middleware is not referenced or linked into either entrypoint. The compiled-symbol scope test checks both Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. This is exact non-applicability, not an accepted-risk waiver.",
-    "evidence": "tests/tooling/test_echo_security_scope.py",
-    "expires": "2026-10-31"
-  },
-  {
-    "scanner": "trivy",
-    "rule": "CVE-2026-118262",
-    "path": "github.com/labstack/echo/v5",
-    "disposition": "not_applicable",
-    "owner": "swimmwatch",
-    "rationale": "CVE alias of GHSA-9969-6676-49h5: the affected Echo Proxy WebSocket middleware is not referenced or linked into either entrypoint. The compiled-symbol scope test checks both Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. This is exact non-applicability, not an accepted-risk waiver.",
-    "evidence": "tests/tooling/test_echo_security_scope.py",
-    "expires": "2026-10-31"
-  },
-  {
-    "scanner": "trivy",
-    "rule": "GHSA-9969-6676-49h5",
-    "path": "github.com/labstack/echo/v5",
-    "disposition": "not_applicable",
-    "owner": "swimmwatch",
-    "rationale": "The advisory concerns Echo Proxy WebSocket middleware. Resident V1 uses explicit HTTP handlers and its own bounded http.Client transport; Echo Proxy is not referenced or linked into either entrypoint. The mandatory compiled-symbol scope test checks both exact Linux/amd64 entrypoints and includes a positive Proxy-linked fixture. Echo v5.4.0 remains the approved core pin; this is exact non-applicability, not an accepted-risk waiver.",
-    "evidence": "tests/tooling/test_echo_security_scope.py",
-    "expires": "2026-10-31"
   }
 ]

@@ -18,23 +18,21 @@ runs:
         CI_DOWNLOAD_CACHE_PREFIX: whisper-downloads-v1
         CI_TRIVY_CACHE_DIR: .local/trivy-cache
         CI_TRIVY_CACHE_PREFIX: whisper-trivy-db-v1
-        CI_BUILD_CACHE_DIR: ${{ runner.temp }}/buildkit-cache
-        CI_BUILD_CACHE_NEXT_DIR: ${{ runner.temp }}/buildkit-cache-next
-        CI_BUILD_CACHE_PREFIX: whisper-pr-buildkit-v1
+        REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
         python_version=$(cat .python-version)
         [[ "$python_version" =~ ^3\.[0-9]+\.[0-9]+$ ]]
         printf '%s\n' \
           "CI_PYTHON_VERSION=$python_version" \
+          "CI_BUILD_CACHE_REPOSITORY=ghcr.io/${REPOSITORY,,}-buildcache" \
           "CI_CACHE_DAY=$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
         for name in \
           GOTOOLCHAIN GOWORK SEGMENT_DOWNLOAD_TIMEOUT_MINS \
           CI_ARTIFACT_RETENTION_DAYS CI_PUBLICATION_RETENTION_DAYS \
           CI_ARTIFACT_COMPRESSION_LEVEL CI_IMAGE_PLATFORM \
           CI_DOWNLOAD_CACHE_DIR CI_DOWNLOAD_CACHE_PREFIX \
-          CI_TRIVY_CACHE_DIR CI_TRIVY_CACHE_PREFIX \
-          CI_BUILD_CACHE_DIR CI_BUILD_CACHE_NEXT_DIR CI_BUILD_CACHE_PREFIX; do
+          CI_TRIVY_CACHE_DIR CI_TRIVY_CACHE_PREFIX; do
           printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"
         done
         jq -er '

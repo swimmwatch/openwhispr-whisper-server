@@ -167,11 +167,79 @@ uv run --locked python tests/acceptance/openai_client.py \
 
 Use `--response-format text` for the second supported representation. The target
 must be the explicitly authorized live candidate or separately authorized local
-fix target; local calls do not qualify a published candidate. These calls passed
-on recorded local images, not yet against an accepted GPU candidate. Local disposable HTTP fault-server tests check
-client failure/privacy behavior only. OpenWhispr must additionally run its genuine
-supported upload transport; a handwritten POST is not a replacement. Its prepared
-scoped Electron probe is private task tooling, not full UI acceptance evidence.
+fix target; local calls do not qualify a published candidate. `TestClientCompatibility`
+now runs only the required genuine SDK ten-format JSON/text matrix under the
+Approved REQ-012 amendment. Desktop/Electron execution is cancelled as a V1 gate,
+not passed; SDK success does not establish actual OpenWhispr application
+interoperability. A handwritten POST is not a replacement for SDK evidence.
+Local disposable HTTP fault-server tests establish failure/privacy behavior only.
+The published rc.5 server report owns actual candidate outcomes.
+
+For memory evidence, API RSS now uses the precise PID 1 `smaps_rollup` resident
+total, with missing/invalid data rejected; no approximate `status/VmRSS` fallback
+is used. This changes the observation source, not envelope formulas, conditioning
+budgets, success/failure workloads or retention checks. Each new run independently
+calibrates its bounds; earlier approximate-counter bounds are not reused. All owned-process aggregate RSS and backend breakdown Anonymous now use precise
+rollup counters too; only the independently labeled File counter remains
+approximate `status/RssFile`. No PSS or RSS-minus-anonymous substitution is used.
+The v3 memory entry requires **both** `P07_API_GC_TRACE=1` and
+`P07_SUPERVISOR_GC_TRACE=1`; missing either fails before observation/calibration.
+Actual flags/images/start identities are independently verified. These fixed
+profiles enable numeric diagnostics, never GC tuning or forced collection.
+An independent premeasurement completion barrier plus three comparable natural
+cycles freezes each Go role's marked-live interval. The same bounded collector
+checks measured and terminal phases; precise API RSS remains reported and its
+three-request-block accumulation check remains active. Only the API absolute
+completed-RSS rejection is replaced by its independently frozen heap proof.
+Pending, stale, forced, replaced-process or missing proof cannot qualify a run.
+
+If necessary, at most 4096 sequential GETs of the existing `/health/live` per
+observation phase obtain ordinary collections under the unchanged caller deadline.
+The same procedure is used for calibration and measurement; actual calls/errors
+and timing are retained. These are not extra inference requests. No budget is
+reset and the 120-inference conditioning cap is unchanged. Numeric logs use
+bounded inclusive `--since/--until` windows; supplementary artifacts never reread
+accumulated history. Scope transitions require proven retirement and independent
+pre-work calibration of a new Go process, not refitting from failed work.
+Whole-MiB quantization does not prove every sub-resolution retained copy.
+
+Run functional/SDK slices and independent correlated performance without these
+GC profiles. Diagnostic memory timing does not establish queue/backend/API
+components; use the separate uninstrumented performance entry and owning report.
+Individual private reports retain `qualification: not_established`; only the
+owning packet can establish overall completion from all actual required evidence.
+
+## Partial P08 public and SDK workloads
+
+`TestP08SharedHTTPPartial` uses the same public-contract and genuine SDK cases as
+P07 against an already authorized, parent-owned Kubernetes pair and loopback
+forward. It does not install or replace the release. Its private mode-0600 JSON
+selection contains `resource_target` (absolute path to the existing private P08
+resource selection with namespace and Pod UIDs), `api_image_id`, and
+`backend_image_id` (actual runtime-reported image IDs). The selection and target
+are private and must not be copied into reports.
+
+Set `P08_SHARED_HTTP=1`, `P08_SHARED_HTTP_SELECTION` to that selection,
+`P08_SHARED_BACKEND_PORT` to the selected supervisor port, and the existing
+`P08_DEVELOPMENT_API_URL`, `P08_DEVELOPMENT_FIXTURES`,
+`P08_DEVELOPMENT_EVIDENCE`, and `P08_DEVELOPMENT_MODEL` inputs. The API URL must
+be loopback; fixtures and an existing mode-0700 evidence directory must be
+absolute. Do not set this opt-in without an authorized target and test window.
+With those private inputs already set, the SDK-only selector is:
+
+```sh
+rtk proxy env P08_SHARED_HTTP=1 go test ./tests/acceptance \
+  -run '^TestP08SharedHTTPPartial$/^client_compatibility$' -count=1 -v -timeout=35m
+```
+
+This invokes the existing locked Python SDK JSON/text codec matrix; a CPU fake
+runner test is not SDK or GPU evidence.
+
+At each workload boundary the test checks selected process/Pod/image identities
+and correlates a unique loopback health request to the selected API Pod log.
+These are boundary samples, not continuous identity or network isolation proof.
+A selected or partial run does not establish CUDA activity, memory, lifecycle,
+full shared-suite execution, or P08 qualification.
 
 ## Still required
 

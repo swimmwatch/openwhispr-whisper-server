@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -35,19 +34,21 @@ type localBuildReceipt struct {
 }
 
 type acceptanceEnvironment struct {
-	ctx       context.Context
-	target    *DockerTarget
-	client    *PublicClient
-	settings  config.Settings
-	selection acceptanceSelection
-	testName  string
-	root      string
-	workdir   string
-	prepared  string
-	config    string
-	address   string
-	audio     []byte
-	startup   time.Duration
+	ctx                             context.Context
+	target                          *DockerTarget
+	client                          *PublicClient
+	settings                        config.Settings
+	selection                       acceptanceSelection
+	testName                        string
+	root                            string
+	workdir                         string
+	prepared                        string
+	config                          string
+	address                         string
+	audio                           []byte
+	startup                         time.Duration
+	supervisorGCProfileVerified     *bool
+	apiGCWindow, supervisorGCWindow *residentGoHeapWindow
 }
 
 func openLocalEnvironment(t *testing.T, configure func(*config.Settings)) *acceptanceEnvironment {
@@ -164,6 +165,17 @@ func openAcceptanceEnvironment(t *testing.T, selection acceptanceSelection, conf
 		}
 		environment.selection.APIID, environment.selection.BackendID = ids["api"], ids["backend"]
 	}
+	gcDiagnostic := os.Getenv("P07_SUPERVISOR_GC_TRACE") == "1"
+	if gcDiagnostic {
+		if err := target.setSupervisorGCTrace(true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if os.Getenv("P07_API_GC_TRACE") == "1" {
+		if err := target.setAPIGCTrace(true); err != nil {
+			t.Fatal(err)
+		}
+	}
 	started := time.Now()
 	if err := target.Up(ctx); err != nil {
 		t.Fatal(err)
@@ -191,6 +203,9 @@ func openAcceptanceEnvironment(t *testing.T, selection acceptanceSelection, conf
 		if err := recordPublishedBinding(ctx, environment); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if gcDiagnostic {
+		recordSupervisorGCProfile(t, environment)
 	}
 	t.Log("selected acceptance slice only; full GPU qualification is not established")
 	return environment
@@ -275,45 +290,24 @@ func TestLocalResidentBaseline(t *testing.T) {
 
 func runResidentBaseline(t *testing.T, e *acceptanceEnvironment) {
 	t.Helper()
-	before, err := e.target.Processes(e.ctx, "backend")
+	before, err := e.target.Observe(e.ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	native := 0
-	for _, process := range before {
-		if process.Command == "whisper-server" {
-			if native != 0 {
-				t.Fatal("more than one native worker is resident")
-			}
-			native = process.PID
-		}
+	if err := residentGenerationStable(before, before); err != nil {
+		t.Fatal(err)
 	}
-	if native == 0 {
-		t.Fatal("no native worker was observed")
+	workload, err := measureSharedResidentWorkload(e.ctx, e.client, e.audio, "base", 60)
+	if err != nil {
+		t.Fatalf("resident public workload failed: preflight=%t successes=%d errors=%d", workload.PreflightPassed, workload.Summary.Successes, workload.Summary.Errors)
 	}
-	reply, err := e.client.Transcribe(e.ctx, e.audio, "jfk.wav", []FormField{{"model", "base"}, {"language", "en"}, {"temperature", "0"}})
-	if err != nil || reply.Status != http.StatusOK || strings.TrimSpace(reply.Text) == "" || !identifiedPublicSpeech(reply.Text) {
-		t.Fatalf("local speech transcription failed: status=%d transport_error=%t speech=%+v", reply.Status, err != nil, observePublicSpeech(reply.Text))
-	}
-	summary, err := MeasurePublicSteadyState(e.ctx, e.client, TranscriptionWorkload{Audio: e.audio, Filename: "jfk.wav", Fields: []FormField{{"model", "base"}, {"language", "en"}, {"temperature", "0"}}, AudioDuration: 11 * time.Second, Samples: 60})
-	if err != nil || summary.Successes != 60 || summary.Errors != 0 {
-		t.Fatalf("local repeated workload failed: successes=%d errors=%d summary_error=%t", summary.Successes, summary.Errors, err != nil)
-	}
-	after, err := e.target.Processes(e.ctx, "backend")
+	summary := workload.Summary
+	after, err := e.target.Observe(e.ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	count := 0
-	for _, process := range after {
-		if process.Command == "whisper-server" {
-			count++
-			if process.PID != native {
-				t.Fatal("successful local requests replaced the resident native worker")
-			}
-		}
-	}
-	if count != 1 {
-		t.Fatal("resident native worker count changed")
+	if err := residentGenerationStable(before, after); err != nil {
+		t.Fatal(err)
 	}
 	summary.Startup = &e.startup
 	report, err := json.MarshalIndent(map[string]any{"scope": e.selection.Scope, "runtime_input_identity": e.selection.RuntimeInputIdentity, "api_image": e.selection.APIImage, "backend_image": e.selection.BackendImage, "settings": map[string]any{"rate_limit_enabled": false, "logging": e.settings.Logging.Level, "model": e.settings.Models.Served, "operation_seconds": e.settings.Timeouts.OperationSeconds}, "summary": summary}, "", "  ")

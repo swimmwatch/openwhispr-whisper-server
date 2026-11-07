@@ -95,6 +95,7 @@ class ActualPublisherTests(unittest.TestCase):
                 with urllib.request.urlopen(request, timeout=15) as response:
                     return response.read()
             except urllib.error.HTTPError as error:
+                error.close()
                 if error.code == HTTPStatus.NOT_FOUND:
                     return None
                 raise

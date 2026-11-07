@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/models"
+	"github.com/swimmwatch/openwhispr-whisper-server/internal/adapter/wav"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/domain"
 	"github.com/swimmwatch/openwhispr-whisper-server/internal/platform/logging"
 )
@@ -34,7 +34,7 @@ const (
 
 type Options struct {
 	NativeCommand, GPUCommand, Environment            []string
-	Artifact                                          models.Artifact
+	Artifact                                          domain.ModelArtifact
 	Fingerprint                                       string
 	NativePort, GPUDevice                             int
 	WorkRoot                                          string
@@ -137,7 +137,7 @@ func validateOptions(opts Options) error {
 		return failure(domain.InvalidInput, errNative)
 	}
 	if opts.OperationTimeout <= 0 || opts.CleanupTimeout <= 0 || opts.ShutdownTimeout <= 0 ||
-		opts.MaxWAVBytes < canonicalWAVMinimumBytes ||
+		opts.MaxWAVBytes < wav.MinBytes ||
 		opts.MaxReplyBytes < 1 ||
 		opts.PromptBytes <= 0 {
 		return failure(domain.InvalidInput, errNative)
